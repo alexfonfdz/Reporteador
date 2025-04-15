@@ -1,0 +1,121 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Clientes Ausentes {% endblock %} 
+
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header card-header-primary">
+                    <h4 class="card-title ">Clientes Ausentes</h4>
+                    <p class="card-category"> Ver clientes que no han comprado en un periodo de tiempo.</p>
+                </div>
+                <div class="card-body">
+                    <form id="filter-form" method="get">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="text" name="descripcion" id="descripcion" class="form-control" placeholder="Buscar por descripción">
+                            </div>
+                            <div class="col-md-6">
+                                <select title="Fecha" name="date-control" id="date-control" class="form-control">
+                                    <option value="un_mes">Un mes</option>
+                                    <option value="dos_meses">2 meses</option>
+                                    <option value="tres_meses">3 meses</option>
+                                    <option value="seis_meses">6 meses</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                    <div class="table-responsive mt-3">
+                        <table class="table">
+                            <thead class=" text-primary">
+                                <th>Nombre</th>
+                                <th>RFC</th>
+                                <th>Fecha de Última Compra</th>
+                            </thead>
+                            <tbody id="clientes-table-body">
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination">
+                        <button id="prev-page" class="btn btn-primary" disabled>Anterior</button>
+                        <span id="page-info" class="mx-2"></span>
+                        <button id="next-page" class="btn btn-primary" disabled>Siguiente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock content %}
+
+{% block javascripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const descripcionInput = document.getElementById('descripcion');
+        const dateControlSelect = document.getElementById('date-control');
+        const clientesTableBody = document.getElementById('clientes-table-body');
+        const prevPageButton = document.getElementById('prev-page');
+        const nextPageButton = document.getElementById('next-page');
+        const pageInfo = document.getElementById('page-info');
+    
+        let currentPage = 1;
+    
+        async function updateClientesAusentesTable(page = 1) {
+            const descripcion = descripcionInput.value;
+            const dateControl = dateControlSelect.value;
+    
+            const data = await fetchClientesAusentes(page, descripcion, dateControl);
+    
+            clientesTableBody.innerHTML = '';
+            data.clientes.forEach(cliente => {
+                const row = document.createElement('tr');
+                const fechaUltimaCompra = new Date(cliente[3]).toLocaleString('es-ES', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                row.innerHTML = `
+                    <td>${cliente[1]}</td>
+                    <td>${cliente[2]}</td>
+                    <td>${fechaUltimaCompra}</td>
+                `;
+                clientesTableBody.appendChild(row);
+            });
+    
+            pageInfo.textContent = `Page ${data.current_page} of ${data.num_pages}`;
+            prevPageButton.disabled = !data.has_previous;
+            nextPageButton.disabled = !data.has_next;
+            currentPage = data.current_page;
+        }
+    
+        descripcionInput.addEventListener('input', function() {
+            updateClientesAusentesTable();
+        });
+    
+        dateControlSelect.addEventListener('change', function() {
+            updateClientesAusentesTable();
+        });
+    
+        prevPageButton.addEventListener('click', function() {
+            if (currentPage > 1) {
+                updateClientesAusentesTable(currentPage - 1);
+            }
+        });
+    
+        nextPageButton.addEventListener('click', function() {
+            updateClientesAusentesTable(currentPage + 1);
+        });
+    
+        // Initial fetch
+        updateClientesAusentesTable();
+    });
+</script>
+{% endblock javascripts %}

@@ -1,0 +1,146 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Clientes Ausentes {% endblock %} 
+
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header card-header-primary">
+                    <h4 class="card-title ">Reportes</h4>
+                    <p class="card-category"> Ver reportes de almacen de un almacen de origen y uno de destino.</p>
+                </div>
+                <div class="card-body">
+                    <form id="filter-form" method="get">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <select title="Origen" name="origin-report" id="origin" class="form-control" onchange="updateDestination()">
+                                    <option value="" disabled selected>Selecciona Origen</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <select title="Destino" name="destination-report" id="destination" class="form-control" onchange="updateOrigin()" disabled>
+                                    <option value="" disabled selected>Selecciona Destino</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="almacen-data-container" class="mt-3">
+                        <div id="almacen-origin-container">
+                            <h5 id="almacen-origin-name"></h5>
+                            <table class="table">
+                                <thead class="text-primary">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Disponible</th>
+                                        <th>Inv. Sug.</th>
+                                        <th>Prom. Venta</th>
+                                        <th>MI</th>
+                                        <th>Peso</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="almacen-origin-data-body">
+                                </tbody>
+                            </table>
+                        </div>
+                        <div id="almacen-destination-container" style="display: none;">
+                            <h5 id="almacen-destination-name"></h5>
+                            <table class="table">
+                                <thead class="text-primary">
+                                    <tr>
+                                        <th>Código</th>
+                                        <th>Disponible</th>
+                                        <th>Inv. Sug.</th>
+                                        <th>Prom. Venta</th>
+                                        <th>MI</th>
+                                        <th>Peso</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="almacen-destination-data-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="pagination">
+                        <button id="prev-page" class="btn btn-primary" disabled>Anterior</button>
+                        <span id="page-info" class="mx-2"></span>
+                        <button id="next-page" class="btn btn-primary" disabled>Siguiente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock content %}
+
+{% block javascripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', async function() {
+        try {
+            const data = await fetchAlmacenes();
+            const originSelect = document.getElementById('origin');
+            const destinationSelect = document.getElementById('destination');
+            data.forEach(almacen => {
+                const option = new Option(almacen[1], almacen[0]);
+                originSelect.add(option.cloneNode(true));
+                destinationSelect.add(option.cloneNode(true));
+            });
+        } catch (error) {
+            console.error('Error fetching almacenes:', error);
+        }
+    });
+
+    async function updateDestination() {
+        const originSelect = document.getElementById('origin');
+        const selectedOrigin = originSelect.value;
+        const destinationSelect = document.getElementById('destination');
+        destinationSelect.disabled = false;
+        await fetchAlmacenData(selectedOrigin, 'Origen', 1);
+    }
+
+    async function updateOrigin() {
+        const destinationSelect = document.getElementById('destination');
+        const selectedDestination = destinationSelect.value;
+        await fetchAlmacenData(selectedDestination, 'Destino', 1);
+    }
+
+    async function fetchAlmacenData(almacenId, tipo, page) {
+        try {
+            const data = await fetchAlmacenData(almacenId, page);
+            const almacenName = document.getElementById(`almacen-${tipo.toLowerCase()}-name`);
+            const almacenDataBody = document.getElementById(`almacen-${tipo.toLowerCase()}-data-body`);
+
+            almacenName.textContent = `Datos del Almacén (${tipo})`;
+            almacenDataBody.innerHTML = '';
+
+            data.almacen_data.forEach(row => {
+                const tr = document.createElement('tr');
+                row.forEach(cell => {
+                    const td = document.createElement('td');
+                    td.textContent = cell;
+                    tr.appendChild(td);
+                });
+                almacenDataBody.appendChild(tr);
+            });
+
+            document.getElementById('prev-page').disabled = !data.has_previous;
+            document.getElementById('next-page').disabled = !data.has_next;
+            document.getElementById('page-info').textContent = `Página ${data.current_page} de ${data.num_pages}`;
+
+            document.getElementById('prev-page').onclick = () => fetchAlmacenData(almacenId, tipo, data.current_page - 1);
+            document.getElementById('next-page').onclick = () => fetchAlmacenData(almacenId, tipo, data.current_page + 1);
+
+            if (tipo === 'Destino') {
+                document.getElementById('almacen-destination-container').style.display = 'block';
+                document.getElementById('almacen-origin-container').style.width = '50%';
+                document.getElementById('almacen-destination-container').style.width = '50%';
+            }
+        } catch (error) {
+            console.error('Error fetching almacen data:', error);
+        }
+    }
+</script>
+{% endblock javascripts %}

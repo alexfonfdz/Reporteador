@@ -1,0 +1,51 @@
+{% if request.user.is_authenticated %}
+    <div class="sidebar" data-color="purple" data-background-color="white" data-image="/static/assets/img/sidebar-1.jpg">
+        <div class="logo">
+            <a rel="noopener noreferrer" href="/" class="simple-text logo-normal">
+                Einsoft Reporteador
+            </a>
+        </div>
+        <div class="sidebar-wrapper">
+            <ul class="nav">
+
+                <li class="nav-item {% if 'backorders' in segment %} active {% endif %}">
+                    <a class="nav-link" href="/backorders.html">
+                        <p>Backorders</p>
+                    </a>
+                </li>
+                <!-- <li class="nav-item {% if 'traspasos' in segment %} active {% endif %}">
+                    <a class="nav-link" href="/traspasos.html">
+                        <p>Traspasos</p>
+                    </a>
+                </li>
+                <li class="nav-item {% if 'reportes' in segment %} active {% endif %}">
+                    <a class="nav-link" href="/reportes.html">
+                        <p>Reporte</p>
+                    </a>
+                </li> -->
+                <li class="nav-item {% if 'clientes_nuevos' in segment %} active {% endif %}">
+                    <a class="nav-link" href="/clientes_nuevos.html">
+                        <p>Clientes Nuevos</p>
+                    </a>
+                </li>
+                <li class="nav-item {% if 'clientes_ausentes' in segment %} active {% endif %}">
+                    <a class="nav-link" href="/clientes_ausentes.html">
+                        <p>Clientes Ausentes</p>
+                    </a>
+                </li>
+                <li class="nav-item {% if 'clientes_vencidos' in segment %} active {% endif %}">
+                    <!-- <a class="nav-link" href="/clientes_vencidos.html">
+                        <p>Clientes Vencidos</p>
+                    </a>
+                </li> -->
+                <div class="dropdown-divider"></div>
+                <li class="nav-item">
+                    <a class="nav-link" href="{% url 'logout' %}" >
+                    <p>Cerrar Sesión</p>
+                    </a>
+                </li> 
+
+            </ul>
+        </div>
+    </div>
+{% endif %}

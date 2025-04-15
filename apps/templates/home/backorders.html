@@ -1,0 +1,257 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Backorders {% endblock %} 
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header card-header-primary">
+                    <h4 class="card-title ">Backorders</h4>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="TableBackorders">
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock content %}
+
+{% block javascripts %}
+<script>
+    $(document).ready(function() {
+        var $table = $('#TableBackorders')
+        buildTable($table, 8, 1)
+    });
+
+    async function buildTable($el, cells, rows) {
+        var i; var j; var row
+        var months = []
+        var arrYears = []
+        var days = []
+        var products = []
+        var folio = []
+        var columns = []
+        var data = []
+        var years = await fetchYears()
+
+        columns.push({
+            field: 'name',
+            title: 'Etiqueta de fila'
+        })
+        columns.push({
+            field: 'backorderSum',
+            title: 'Suma de B.O',
+            sortable: true
+        })
+        columns.push({
+            field: 'importSum',
+            title: 'Suma de importe',
+            sortable: true
+        })
+        columns.push({
+            field: 'comment',
+            title: 'Comentario'
+        })
+        columns.push({
+            field: 'line',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineA',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineM',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineD',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineP',
+            title: '',
+            visible: false
+        })
+
+        row=[]
+        for(j=0; j<years.length;j++){
+            row['name'] = years[j][0]
+            row['backorderSum'] = years[j][1]
+            row['importSum'] = years[j][2]
+            row['comment'] = ''
+            row['line'] = 'año'
+            row['lineA'] = years[j][0]
+            row['lineM'] = ''
+            row['lineD'] = ''
+            row['lineP'] = ''
+            data.push(row)
+            row=[]
+        }
+    
+        $el.bootstrapTable({
+            columns: columns,
+            data: data,
+            detailView: cells > 1,
+            onExpandRow: function (index, row, $detail) {
+                expandTable($detail, cells - 1, row.line, row.lineA, row.lineM, row.lineD, row.lineP)
+            }
+        })
+    }
+
+    function expandTable($detail, cells, line, lineA, lineM, lineD, lineP) {
+        buildTableExpand($detail.html('<table></table>').find('table'), cells, 1, line, lineA, lineM, lineD, lineP)
+    }
+
+    async function buildTableExpand($el, cells, rows, line, lineA, lineM, lineD, lineP) {
+        var i; var j; var row
+        var months = []
+        var arrYears = []
+        var days = []
+        var products = []
+        var folio = []
+        var columns = []
+        var data = []
+        var result = []
+        var linea
+
+        if(line=="año"){
+        result = await fetchMonths(lineA)
+        linea = "mes"
+        }
+        else if(line=="mes"){
+        result = await fetchDays(lineA, lineM)
+        linea = "dia"
+        }
+        else if(line=="dia"){
+        result = await fetchProducts(lineD)
+        linea = "producto"
+        }
+        else if(line=="producto"){
+        result = await fetchFolio(lineD,lineP)
+        linea = "folio"
+        }
+
+        columns.push({
+            field: 'name',
+            title: 'Etiqueta de fila'
+        })
+        columns.push({
+            field: 'backorderSum',
+            title: 'Suma de B.O',
+            sortable: true
+        })
+        columns.push({
+            field: 'importSum',
+            title: 'Suma de importe',
+            sortable: true
+        })
+        columns.push({
+            field: 'comment',
+            title: 'Comentario'
+        })
+        columns.push({
+            field: 'lineM',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineD',
+            title: '',
+            visible: false
+        })
+        columns.push({
+            field: 'lineP',
+            title: '',
+            visible: false
+        })
+      
+        row=[]
+        if(linea=="mes"){
+            for(j=0; j<result.length;j++){
+                row['name'] = result[j][0]
+                row['backorderSum'] = result[j][1]
+                row['importSum'] = result[j][2]
+                row['comment'] = ''
+                row['line']=linea
+                row['lineA']=lineA
+                row['lineM']=result[j][0]
+                row['lineD']=lineD
+                row['lineP']=lineP
+                data.push(row)
+                row=[]
+            }
+        }
+        else if(linea=="dia"){
+            for(j=0; j<result.length;j++){
+                row['name'] = result[j][0]
+                row['backorderSum'] = result[j][1]
+                row['importSum'] = result[j][2]
+                row['comment'] = ''
+                row['line']=linea
+                row['lineA']=lineA
+                row['lineM']=lineM
+                row['lineD']=result[j][0]
+                row['lineP']=lineP
+                data.push(row)
+                row=[]
+            }
+        }
+        else if(linea=="producto"){
+            for(j=0; j<result.length;j++){
+                row['name'] = result[j][0]
+                row['backorderSum'] = result[j][1]
+                row['importSum'] = result[j][2]
+                row['comment'] = ''
+                row['line']=linea
+                row['lineA']=lineA
+                row['lineM']=lineM
+                row['lineD']=lineD
+                row['lineP']=result[j][0]
+                data.push(row)
+                row=[]
+            }
+        }
+        else if(linea=="folio"){
+            for(j=0; j<result.length;j++){
+                row['name'] = result[j][0]
+                row['backorderSum'] = result[j][1]
+                row['importSum'] = result[j][2]
+                row['comment'] = ''
+                row['line']=linea
+                row['lineA']=lineA
+                row['lineM']=lineM
+                row['lineD']=lineD
+                row['lineP']=lineP
+                data.push(row)
+                console.log(row)
+                row=[]
+            }
+        }
+    
+        $el.bootstrapTable({
+            columns: columns,
+            data: data,
+            detailView: cells > 1,
+            onExpandRow: function (index, row, $detail) {
+                /* eslint no-use-before-define: ["error", { "functions": false }]*/
+                expandTable($detail, cells - 1, row.line, row.lineA, row.lineM, row.lineD, row.lineP)
+            }
+        })
+    }
+</script>
+
+{% endblock javascripts %}

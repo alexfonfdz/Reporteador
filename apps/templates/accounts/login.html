@@ -1,0 +1,72 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Inicio de Sesión {% endblock %} 
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+<br><br>
+<div class="row justify-content-md-center">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header card-header-primary">
+            <h4 class="card-title">
+                Einsoft Reporteador
+            </h4>
+        </div>
+        <div class="card-body">
+
+            <h6 class="card-category">
+                {% if msg %}
+                    <span class="text-danger">{{ msg | safe }}</span>
+                {% endif %}  
+            </h6>
+          
+            <br />
+
+            <form role="form" method="post" action="">
+              
+                {% csrf_token %} 
+
+                <div class="row">
+                <div class="col-md-12">
+                    <div class="form-group">
+                    <label class="bmd-label-floating">Usuario</label>
+                    {{ form.username }}
+                    </div>
+                </div>
+                </div>
+
+                <br />
+
+                <div class="row">
+                <div class="col-md-12">
+                    <div class="form-group">
+                    <label class="bmd-label-floating">Contraseña</label>
+                    {{ form.password }}
+                    </div>
+                </div>
+                </div>
+
+                <br />
+
+                <button type="submit" name="login" class="btn btn-primary pull-left">Iniciar Sesión</button>
+
+                &nbsp; &nbsp; 
+                <span class="pull-right">
+                    <a href="{% url 'register' %}" class="text-primary">Crear usuario (LocalDev)</a>
+                </span>
+
+                <div class="clearfix"></div>
+
+            </form>
+        </div>
+      </div>
+    </div>
+</div>
+
+{% endblock content %}
+
+<!-- Specific Page JS goes HERE  -->
+{% block javascripts %}{% endblock javascripts %}
