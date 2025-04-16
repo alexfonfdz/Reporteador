@@ -6,50 +6,9 @@
 {% block stylesheets %}{% endblock stylesheets %}
 
 {% block content %}
-    <div class="row">
-        <div class="col-md-6">
-            <div class="card card-chart">
-            <div class="card-header card-header-success">
-                <div class="ct-chart" id="dailySalesChart"></div>
-            </div>
-            <div class="card-body">
-                <h4 class="card-title">Daily Sales</h4>
-                <p class="card-category">
-                <span class="text-success"><i class="fa fa-long-arrow-up"></i> 55% </span> increase in today sales.</p>
-            </div>
-            <div class="card-footer">
-                <div class="stats">
-                <i class="material-icons">access_time</i> updated 4 minutes ago
-                </div>
-            </div>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="card card-chart">
-            <div class="card-header card-header-warning">
-                <div class="ct-chart" id="websiteViewsChart"></div>
-            </div>
-            <div class="card-body">
-                <h4 class="card-title">Email Subscriptions</h4>
-                <p class="card-category">Last Campaign Performance</p>
-            </div>
-            <div class="card-footer">
-                <div class="stats">
-                <i class="material-icons">access_time</i> campaign sent 2 days ago
-                </div>
-            </div>
-            </div>
-        </div>
-    </div>
+    
 {% endblock content %}
 
 <!-- Specific Page JS goes HERE  -->
-{% block javascripts %}
-  <script>
-    $(document).ready(function() {
-        // Javascript method's body can be found in assets/js/demos.js
-        md.initDashboardPageCharts();
-
-    });
-  </script>
+{% block javascripts %}  
 {% endblock javascripts %}
