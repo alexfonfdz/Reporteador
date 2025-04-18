@@ -1,0 +1,50 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Clientes Nuevos {% endblock %} 
+
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header card-header-primary">
+                    <h4 class="card-title ">Productos ABC</h4>
+                    <p class="card-category"> Lorem ipsum dolor sit amet, consectetur adipisci elit</p>
+                </div>
+                <div class="card-body">
+                    <form id="filter-form" method="get">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <input type="text" name="descripcion" id="descripcion" class="form-control" placeholder="Lorem ipsum dolor sit amet" aria-label="Descripcion" aria-describedby="basic-addon1">
+                            </div>
+                        </div>
+                    </form>
+                    <div class="table-responsive mt-3">
+                        <table class="table">
+                            <thead class=" text-primary">
+                                <th>Lorem ipsum</th>
+                                <th>Lorem ipsum</th>
+                                <th>Lorem ipsum</th>
+                            </thead>
+                            <tbody id="clientes-table-body">
+                                
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="pagination">
+                        <button id="prev-page" class="btn btn-primary" disabled>Anterior</button>
+                        <span id="page-info" class="mx-2"></span>
+                        <button id="next-page" class="btn btn-primary" disabled>Siguiente</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+{% endblock content %}
+
+{% block javascripts %}
+<script></script>
+{% endblock javascripts %}
