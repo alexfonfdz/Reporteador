@@ -15,7 +15,7 @@ from django.core.paginator import Paginator
 from calendar import month_name
 from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
-from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT
+from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA
 import json
 import psycopg2 as p
 
@@ -57,7 +57,7 @@ def pages(request):
 def get_years(request):
     conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT TO_CHAR(fecha, 'YYYY') AS año, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM prueba9.admintotal_movimientodetalle  GROUP BY año ORDER BY año ASC")
+    cur.execute(f"SELECT TO_CHAR(fecha, 'YYYY') AS año, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle  GROUP BY año ORDER BY año ASC")
     dataYears  = cur.fetchall()
     cur.close() 
     conn.close()
@@ -70,7 +70,7 @@ def get_months(request):
     year = year['year']
     conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT TO_CHAR(fecha, 'MONTH') AS MES, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM prueba9.admintotal_movimientodetalle where extract(year from prueba9.admintotal_movimientodetalle.fecha) = {year} GROUP BY MES ORDER BY MES ASC")       
+    cur.execute(f"SELECT TO_CHAR(fecha, 'MONTH') AS MES, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle where extract(year from {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = {year} GROUP BY MES ORDER BY MES ASC")       
     dataYearMonth  = cur.fetchall()
     cur.close()
     conn.close()
@@ -86,7 +86,7 @@ def get_days(request):
     month = datetime.strptime(month, "%B").strftime("%m")
     conn=p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT TO_CHAR(fecha, 'DD-MM-YYYY') AS DIA, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM prueba9.admintotal_movimientodetalle WHERE extract(year from prueba9.admintotal_movimientodetalle.fecha) = {year} AND extract(MONTH from prueba9.admintotal_movimientodetalle.fecha) = {month}  GROUP BY DIA ORDER BY DIA ASC")             
+    cur.execute(f"SELECT TO_CHAR(fecha, 'DD-MM-YYYY') AS DIA, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle WHERE extract(year from {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = {year} AND extract(MONTH from {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = {month}  GROUP BY DIA ORDER BY DIA ASC")             
     dataDay  = cur.fetchall()
     cur.close()
     conn.close()
@@ -99,7 +99,7 @@ def get_products(request):
     day = data['day']
     conn=p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT admintotal_producto.descripcion, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM prueba9.admintotal_producto INNER JOIN prueba9.admintotal_movimientodetalle ON prueba9.admintotal_producto.id = admintotal_movimientodetalle.producto_id WHERE DATE(prueba9.admintotal_movimientodetalle.fecha) = TO_DATE('{day}', 'DD-MM-YYYY') GROUP BY admintotal_producto.descripcion")          
+    cur.execute(f"SELECT admintotal_producto.descripcion, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_producto INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle ON {ENV_PSQL_DB_SCHEMA}.admintotal_producto.id = admintotal_movimientodetalle.producto_id WHERE DATE({ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = TO_DATE('{day}', 'DD-MM-YYYY') GROUP BY admintotal_producto.descripcion")          
     dataProducts = cur.fetchall()
     cur.close()
     conn.close()
@@ -113,7 +113,7 @@ def get_folio(request):
     product = data['product']
     conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT admintotal_movimiento.folio, CAST(SUM(admintotal_movimientodetalle.saldo_oc) as money) as suma_de_BO, CAST(SUM(admintotal_movimientodetalle.importe) AS MONEY) as Suma_de_importe FROM prueba9.admintotal_movimiento INNER JOIN prueba9.admintotal_movimientodetalle ON prueba9.admintotal_movimiento.poliza_ptr_id = prueba9.admintotal_movimientodetalle.movimiento_id INNER JOIN prueba9.admintotal_producto ON prueba9.admintotal_movimientodetalle.producto_id = prueba9.admintotal_producto.id WHERE DATE(prueba9.admintotal_movimientodetalle.fecha) = TO_DATE('{day}', 'DD-MM-YYYY') AND prueba9.admintotal_producto.descripcion = '{product}' GROUP BY admintotal_movimiento.folio")
+    cur.execute(f"SELECT admintotal_movimiento.folio, CAST(SUM(admintotal_movimientodetalle.saldo_oc) as money) as suma_de_BO, CAST(SUM(admintotal_movimientodetalle.importe) AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimiento INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle ON {ENV_PSQL_DB_SCHEMA}.admintotal_movimiento.poliza_ptr_id = {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.movimiento_id INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_producto ON {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.producto_id = {ENV_PSQL_DB_SCHEMA}.admintotal_producto.id WHERE DATE({ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = TO_DATE('{day}', 'DD-MM-YYYY') AND {ENV_PSQL_DB_SCHEMA}.admintotal_producto.descripcion = '{product}' GROUP BY admintotal_movimiento.folio")
     dataProductsFolio  = cur.fetchall()
     cur.close()
     conn.close()
@@ -138,7 +138,7 @@ def get_clientes_nuevos(request):
     cur = conn.cursor()
     cur.execute(f"""
             SELECT c.id, c.razon_social AS nombre, c.rfc, c.creado as fecha_registro
-            FROM prueba9.admintotal_cliente c
+            FROM {ENV_PSQL_DB_SCHEMA}.admintotal_cliente c
             WHERE c.creado >= NOW() - INTERVAL '{intervalo}'
             AND c.razon_social ILIKE %s
         """, [f'%{descripcion}%'])
@@ -180,7 +180,7 @@ def get_clientes_ausentes(request):
     cur = conn.cursor()
     cur.execute(f"""
             SELECT c.id, c.razon_social AS nombre, c.rfc, fecha_ultima_venta
-	        FROM prueba9.admintotal_cliente c 
+	        FROM {ENV_PSQL_DB_SCHEMA}.admintotal_cliente c 
             WHERE c.fecha_ultima_venta  < NOW() - INTERVAL '{intervalo}'
             AND c.razon_social ILIKE %s
         """, [f'%{descripcion}%'])
@@ -206,7 +206,7 @@ def get_clientes_ausentes(request):
 def get_almacenes(request):
     conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
     cur = conn.cursor()
-    cur.execute(f"SELECT id, nombre FROM prueba9.admintotal_almacen")
+    cur.execute(f"SELECT id, nombre FROM {ENV_PSQL_DB_SCHEMA}.admintotal_almacen")
     almacenes = cur.fetchall()
     cur.close()
     conn.close()
@@ -233,10 +233,10 @@ def get_almacen_data(request):
             END AS mi,
             ROUND(P.PESO) AS PESO
         FROM
-            PRUEBA9.ADMINTOTAL_PRODUCTOALMACEN PA
-            INNER JOIN PRUEBA9.ADMINTOTAL_PRODUCTO P ON P.ID = PA.PRODUCTO_ID
-            INNER JOIN PRUEBA9.ADMINTOTAL_ALMACEN A ON A.ID = PA.ALMACEN_ID
-            INNER JOIN PRUEBA9.ADMINTOTAL_MOVIMIENTODETALLE MD ON MD.PXA_ID = PA.ID
+            {ENV_PSQL_DB_SCHEMA}.ADMINTOTAL_PRODUCTOALMACEN PA
+            INNER JOIN {ENV_PSQL_DB_SCHEMA}.ADMINTOTAL_PRODUCTO P ON P.ID = PA.PRODUCTO_ID
+            INNER JOIN {ENV_PSQL_DB_SCHEMA}.ADMINTOTAL_ALMACEN A ON A.ID = PA.ALMACEN_ID
+            INNER JOIN {ENV_PSQL_DB_SCHEMA}.ADMINTOTAL_MOVIMIENTODETALLE MD ON MD.PXA_ID = PA.ID
         WHERE
             PA.ALMACEN_ID = %s
             AND MD.CANCELADO = FALSE
