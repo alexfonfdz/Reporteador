@@ -59,6 +59,7 @@ class ProductCatalog(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='catalogs')
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='products')
     add_year = models.IntegerField()
+    last_update = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.product} - {self.catalog}"
@@ -69,7 +70,9 @@ class ProductCatalog(models.Model):
         verbose_name_plural = "Product Catalogs"
 
 class ProductABC(models.Model):
-    product_catalog = models.ForeignKey(ProductCatalog, on_delete=models.PROTECT, related_name='abc_products')
+    catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_products')
+    family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='abc_products')
+    subfamily = models.ForeignKey(SubFamily, on_delete=models.PROTECT, related_name='abc_products')
     total_amount = models.DecimalField(max_digits=25, decimal_places=2, default=0)
     profit = models.DecimalField(max_digits=25, decimal_places=2, default=0)
     profit_percentage = models.DecimalField(max_digits=25, decimal_places=2, default=0)
@@ -141,3 +144,4 @@ class ProductABC(models.Model):
     inventory_close_p_december = models.DecimalField(max_digits=25, decimal_places=2)
     assigned_company = models.CharField(max_length=100, null=True, blank=True)
     year = models.IntegerField()
+    last_update = models.DateTimeField(auto_now=True)
