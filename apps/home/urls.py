@@ -11,6 +11,7 @@ urlpatterns = [
     # The home page
     path('', views.index, name='home'),
 
+    # No modificar
     path('getYears', views.get_years, name='getYears'),
     path('getMonths', views.get_months, name='getMonths'),
     path('getDays', views.get_days, name='getDays'),
@@ -20,6 +21,10 @@ urlpatterns = [
     path('getClientesAusentes', views.get_clientes_ausentes, name='getClientesAusentes'),
     path('getAlmacenes', views.get_almacenes, name='getAlmacenes'),
     path('getAlmacenData', views.get_almacen_data, name='getAlmacenData'),
+
+    # Migrar registros de admin_total a la base de datos local
+    path('get_families_from_admintotal', views.get_families_from_admintotal, name='get_families_from_admintotal'),
+    path('get_products_from_admintotal', views.get_products_from_admintotal, name='get_products_from_admintotal'),    
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),

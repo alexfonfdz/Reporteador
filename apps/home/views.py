@@ -16,7 +16,9 @@ from calendar import month_name
 from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA
+from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs
 import json
+import asyncio
 import psycopg2 as p
 
 
@@ -66,16 +68,49 @@ def get_years(request):
 
 @csrf_exempt
 def get_months(request):
-    year = json.loads(request.body)
-    year = year['year']
-    conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-    cur = conn.cursor()
-    cur.execute(f"SELECT TO_CHAR(fecha, 'MONTH') AS MES, CAST(SUM(saldo_oc) as money) as suma_de_BO, CAST(SUM(importe)AS MONEY) as Suma_de_importe FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle where extract(year from {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = {year} GROUP BY MES ORDER BY MES ASC")       
-    dataYearMonth  = cur.fetchall()
-    cur.close()
-    conn.close()
+    if request.method == "GET":
+        # Validar que el parámetro 'year' esté presente en la URL
+        year = request.GET.get('year')
+        if not year:
+            return JsonResponse({'error': 'El parámetro "year" es requerido.'}, status=400)
 
-    return JsonResponse(dataYearMonth, safe = False)
+        try:
+            # Validar que el año sea un número
+            year = int(year)
+        except ValueError:
+            return JsonResponse({'error': 'El parámetro "year" debe ser un número válido.'}, status=400)
+
+        # Conexión a la base de datos
+        conn = p.connect(
+            dbname=ENV_PSQL_NAME,
+            user=ENV_PSQL_USER,
+            host=ENV_PSQL_HOST,
+            password=ENV_PSQL_PASSWORD,
+            port=ENV_PSQL_PORT
+        )
+        cur = conn.cursor()
+
+        # Ejecutar la consulta
+        cur.execute(f"""
+            SELECT TO_CHAR(fecha, 'MONTH') AS MES, 
+                   CAST(SUM(saldo_oc) AS money) AS suma_de_BO, 
+                   CAST(SUM(importe) AS MONEY) AS Suma_de_importe 
+            FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle 
+            WHERE extract(year FROM {ENV_PSQL_DB_SCHEMA}.admintotal_movimientodetalle.fecha) = %s 
+            GROUP BY MES 
+            ORDER BY MES ASC
+        """, [year])
+        dataYearMonth = cur.fetchall()
+
+        # Cerrar conexión
+        cur.close()
+        conn.close()
+
+        # Retornar los datos como JSON
+        return JsonResponse(dataYearMonth, safe=False)
+
+    else:
+        return JsonResponse({'error': 'Método no permitido. Usa GET.'}, status=405)
 
 @csrf_exempt
 def get_days(request):
@@ -262,3 +297,31 @@ def get_almacen_data(request):
     }
 
     return JsonResponse(data, safe=False)
+
+@csrf_exempt
+def get_families_from_admintotal(request):
+    try:
+        asyncio.run(upsert_families())        
+        asyncio.run(upsert_subfamilies())
+
+        return JsonResponse({'msg': "Se han insertado las familias satisfactoriamente"}, safe=False)
+    except Exception as e:
+        return JsonResponse({'Hubo un error al insertar las familias': str(e)}, status=500)
+    
+@csrf_exempt
+def get_products_from_admintotal(request):
+    try:
+        asyncio.run(upsert_products())
+
+        return JsonResponse({'msg': "Se han insertado los productos satisfactoriamente"}, safe=False)
+    except Exception as e:
+        return JsonResponse({'Hubo un error al insertar los productos': str(e)}, status=500)
+    
+@csrf_exempt
+def get_catalogs_from_admintotal(request):
+    try:
+        asyncio.run(upsert_catalogs())
+
+        return JsonResponse({'msg': "Se han insertado los catálogos satisfactoriamente"}, safe=False)
+    except Exception as e:
+        return JsonResponse({'Hubo un error al insertar los catálogos': str(e)}, status=500)

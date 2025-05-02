@@ -1,6 +1,5 @@
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD
 import psycopg2 as p
-# import mysql.connector as m
 import mysql.connector as m
 import datetime
 
@@ -8,7 +7,7 @@ async def upsert_families():
     try:
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT nombre FROM {ENV_PSQL_DB_SCHEMA}.admintotal_linea")
+        cursor.execute(f"SELECT nombre, id FROM {ENV_PSQL_DB_SCHEMA}.admintotal_linea")
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -19,10 +18,12 @@ async def upsert_families():
         rows2 = cursor.fetchall()
         for row in rows:
             if row[0] not in [r[1] for r in rows2]:
-                cursor.execute(f"INSERT INTO family (name) VALUES ('%s')", (row[0],))
+                cursor.execute(f"INSERT INTO family (name, id_admin) VALUES (%s, %s)", (row[0], row[1],))
         conn.commit()
         cursor.close()
         conn.close()
+
+        print("Familias insertadas correctamente")
         return True
     except Exception as e:
         print(f"Error: {e}")
@@ -37,7 +38,7 @@ async def upsert_subfamilies():
     try:
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT nombre FROM {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea")
+        cursor.execute(f"SELECT nombre, id FROM {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea")
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -48,10 +49,12 @@ async def upsert_subfamilies():
         rows2 = cursor.fetchall()
         for row in rows:
             if row[0] not in [r[1] for r in rows2]:
-                cursor.execute(f"INSERT INTO subfamily (name) VALUES ('%s')", (row[0],))
+                cursor.execute(f"INSERT INTO subfamily (name, id_admin) VALUES (%s, %s)", (row[0], row[1],))
         conn.commit()
         cursor.close()
         conn.close()
+
+        print("Subfamilias insertadas correctamente")
         return True
     except Exception as e:
         print(f"Error: {e}")
@@ -67,7 +70,7 @@ async def upsert_products():
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
         cursor = conn.cursor()
         cursor.execute(f"""
-                       SELECT p.descripcion, p.codigo, p.id, sl.nombre, l.nombre, p.activo FROM {ENV_PSQL_DB_SCHEMA}.admintotal_producto as p 
+                       SELECT p.descripcion, p.codigo, p.id, sl.nombre, l.nombre, p.activo, p.sublinea_id, p.linea_id FROM {ENV_PSQL_DB_SCHEMA}.admintotal_producto as p 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea as sl ON p.sublinea_id = sl.id 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_linea as l ON p.linea_id = l.id""")
         rows = cursor.fetchall()
@@ -77,15 +80,18 @@ async def upsert_products():
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
         cursor.execute("SELECT id, code FROM product")
-        rows2 = cursor.fetchall()
-        for row in rows:
-            if row[1] not in [r[1] for r in rows2]:
-                cursor.execute(f"INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES ('%s', '%s', %s, (SELECT id FROM family WHERE name = '%s'), (SELECT id FROM subfamily WHERE name = '%s'))", (row[0], row[1], row[2], row[4], row[3]))
+        rows2 = cursor.fetchall()        
+        for row in rows:            
+            if row[1] not in [r[1] for r in rows2]:                                
+                cursor.execute(f"INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES (%s, %s, %s, (SELECT id FROM family WHERE id_admin = %s), (SELECT id FROM subfamily WHERE id_admin = %s))", (row[0], row[1], row[2], row[7], row[6]))
             elif row[5] == True:
-                cursor.execute(f"UPDATE product SET description = '%s', family_id = (SELECT id FROM family WHERE name = '%s'), subfamily_id = (SELECT id FROM subfamily WHERE name = '%s') WHERE code = '%s'", (row[0], row[4], row[3], row[1]))
+                print(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
+                cursor.execute(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
         conn.commit()
         cursor.close()
         conn.close()
+
+        print("Productos insertados correctamente")
         return True
     except Exception as e:
         print(f"Error: {e}")
@@ -120,11 +126,11 @@ async def upsert_catalogs(description):
         if cursor:
             cursor.close()
 
-async def upsert_product_catalogs(product_name, catalog_description, year):
+async def upsert_product_catalogs(product_code, catalog_description, year, subfamily):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM product WHERE code = %s", (product_name,))
+        cursor.execute("SELECT id FROM product WHERE code = %s", (product_code,))
         product_id = cursor.fetchone()
         if product_id is None:
             return False
@@ -205,8 +211,8 @@ async def upsert_product_abc_part1(catalog_list, year):
                 conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
                 cursor_pg = conn_pg.cursor()
                 cursor_pg.execute(f"""SELECT
-                                        li.NOMBRE AS FAMILIA,
-                                        sl.NOMBRE AS SUBFAMILIA,
+                                        li.id AS FAMILIA,
+                                        sl.id AS SUBFAMILIA,
                                         ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
                                         ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
                                         ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
@@ -238,12 +244,12 @@ async def upsert_product_abc_part1(catalog_list, year):
                 cursor_pg.close()
                 conn_pg.close()
                 for row in rows:
-                    cursor.execute(f"SELECT id FROM family WHERE name = '%s'", (row[0],))
+                    cursor.execute(f"SELECT id FROM family WHERE id_admin = %s", (row[0],))
                     family_id = cursor.fetchone()
                     if family_id is None:
                         return False
                     family_id = family_id[0]
-                    cursor.execute(f"SELECT id FROM subfamily WHERE name = '%s'", (row[1],))
+                    cursor.execute(f"SELECT id FROM subfamily WHERE id_admin = %s", (row[1],))
                     subfamily_id = cursor.fetchone()
                     if subfamily_id is None:
                         return False
@@ -290,12 +296,12 @@ async def upsert_product_abc_part1(catalog_list, year):
                 conn_pg.close()
 
                 for row in rows:
-                    cursor.execute(f"SELECT id FROM family WHERE name = '%s'", (row[0],))
+                    cursor.execute(f"SELECT id FROM family WHERE name = %s", (row[0],))
                     family_id = cursor.fetchone()
                     if family_id is None:
                         return False
                     family_id = family_id[0]
-                    cursor.execute(f"SELECT id FROM subfamily WHERE name = '%s'", (row[1],))
+                    cursor.execute(f"SELECT id FROM subfamily WHERE name = %s", (row[1],))
                     subfamily_id = cursor.fetchone()
                     if subfamily_id is None:
                         return False
