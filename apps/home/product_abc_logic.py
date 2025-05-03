@@ -3,6 +3,18 @@ import psycopg2 as p
 import mysql.connector as m
 import datetime
 
+"""
+  La función 'upsert_families' realiza una sincronización de datos entre dos bases de 
+  datos (PostgreSQL y MySQL) para insertar registros faltantes en la tabla family de MySQL.
+
+    1. Se conecta a la base de datos PostgreSQL y se obtienen los nombres e IDs de la tabla admintotal_linea.
+    2. Se conecta a la base de datos MySQL y se obtienen los nombres e IDs de la tabla family.
+    3. Se compara la información de ambas tablas:
+         - Si un nombre de familia de PostgreSQL no existe en MySQL, se inserta en la tabla family de MySQL.
+         - Si ya existe, no se realiza ninguna acción.
+    4. Se cierra la conexión a ambas bases de datos.
+    5. Se imprime un mensaje indicando que las familias han sido insertadas correctamente.
+"""
 async def upsert_families():
     try:
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
@@ -34,6 +46,18 @@ async def upsert_families():
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_subfamilies' realiza una sincronización de datos entre dos bases de
+  datos (PostgreSQL y MySQL) para insertar registros faltantes en la tabla subfamily de MySQL.
+
+    1. Se conecta a la base de datos PostgreSQL y se obtienen los nombres e IDs de la tabla admintotal_sublinea.
+    2. Se conecta a la base de datos MySQL y se obtienen los nombres e IDs de la tabla subfamily.
+    3. Se compara la información de ambas tablas:
+        - Si un nombre de subfamilia de PostgreSQL no existe en MySQL, se inserta en la tabla subfamily de MySQL.
+        - Si ya existe, no se realiza ninguna acción.
+    4. Se cierra la conexión a ambas bases de datos.
+    5. Se imprime un mensaje indicando que las subfamilias han sido insertadas correctamente.
+"""
 async def upsert_subfamilies():
     try:
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
@@ -65,6 +89,23 @@ async def upsert_subfamilies():
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_products' realiza una sincronización de datos entre dos bases de
+  datos (PostgreSQL y MySQL) para insertar o actualizar registros en la tabla product de MySQL.
+    
+    1. Se conecta a la base de datos PostgreSQL y se obtienen los detalles de los productos,
+       incluyendo descripción, código, ID, nombre de sublínea y línea, estado activo y los IDs de
+       sublínea y línea.
+    2. Se conecta a la base de datos MySQL y se obtienen los códigos y IDs de los productos existentes
+       en la tabla product.
+    3. Se compara la información de ambas tablas:
+        - Si un código de producto de PostgreSQL no existe en MySQL, se inserta en la tabla products de MySQL
+          junto con el ID de la subfamilia y familia correspondientes.
+        - Si ya existe y el producto está activo, se actualiza la descripción, la familia y la subfamilia
+          en la tabla product de MySQL.
+    4. Se cierra la conexión a ambas bases de datos.
+    5. Se imprime un mensaje indicando que los productos han sido insertados correctamente.
+"""
 async def upsert_products():
     try:
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
@@ -72,7 +113,8 @@ async def upsert_products():
         cursor.execute(f"""
                        SELECT p.descripcion, p.codigo, p.id, sl.nombre, l.nombre, p.activo, p.sublinea_id, p.linea_id FROM {ENV_PSQL_DB_SCHEMA}.admintotal_producto as p 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea as sl ON p.sublinea_id = sl.id 
-                       INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_linea as l ON p.linea_id = l.id""")
+                       INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_linea as l ON p.linea_id = l.id
+                       """)
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -102,6 +144,15 @@ async def upsert_products():
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_catalogs' realiza la inserción de un nuevo catálogo en la base de datos MySQL.
+
+    1. Verifica si la descripción proporcionada es valida (no nula, no vacía y no contiene valores
+       no deseados como 'N/A' o '0').
+    2. Se conecta a la base de datos MySQL y verifica si ya existe un catálogo con la misma descripción.
+        - Si no existe, se inserta un nuevo registro.        
+    3. Se cierra la conexión a la base de datos.    
+"""
 async def upsert_catalogs(description):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
@@ -126,6 +177,23 @@ async def upsert_catalogs(description):
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_product_catalogs' realiza la inserción o actualización de registros 
+  en la tabla product_catalog de MySQL.
+
+    1. Se conecta a la base de datos MySQL.
+    2. Busca el ID del producto utilizando el código del producto proporcionado.    
+        - Si no se encuentra el producto, retorna False.
+    3. Busca el ID del catálogo utilizando la descripción del catálogo proporcionado.
+        - Si no se encuentra el catálogo, retorna False.
+    4. Busca un registro en la tabla product_catalog utilizando el ID del producto y el ID
+       del catálogo.
+        - Si se encuentra un producto, pero el catálogo asociado es diferente o el año es 
+          diferente, se acualiza el registro con el nuevo catálogo.
+        - Si no se encuentra un registro para el producto, el catálogo y el año, se inserta
+          un nuevo registro en la tabla product_catalog.
+    5. Se cierra la conexión a la base de datos.    
+"""
 async def upsert_product_catalogs(product_code, catalog_description, year, subfamily):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
@@ -164,6 +232,20 @@ async def upsert_product_catalogs(product_code, catalog_description, year, subfa
         if cursor:
             cursor.close()
 
+"""
+  La función 'get_product_catalogs' obtiene una lista de catálogos y los productos asociados 
+  para un año específico o años anteriores.
+
+    1. Se conecta a la base de datos MySQL.
+    2. Ejecuta una consulta SQL para obtener el ID del código del producto, el ID del catálogo
+       y el año desde la tabla product_catalog. La consulta selecciona el último catálogo disponible
+       para cada producto en el año seleccionado o años anteriores.
+    3. Los resultados se agrupan en un diccionario donde la clave es el ID del catálogo y el valor es
+       una lista de códigos de productos asociados.
+    4. Convierte el diccionario en una lista de tuplas, donde cada tupla contiene el ID del catálogo y
+       una cadena con los códigos de productos asociados separados por comas.
+    5. Retorna la lista de tuplas y cierra la conexión a la base de datos.
+"""
 async def get_product_catalogs(year):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
@@ -196,6 +278,25 @@ async def get_product_catalogs(year):
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_product_abc_part1' inserta o actualiza los registros en la tabla
+  product_abc de MySQL para un año específico.
+
+    1. Se conecta a la base de datos MySQL y verifica si ya existen registros para el año
+       proporcionado. Si no existen registros o el último mes actualizado es menor a un umbral,
+       se procede a insertar o actualizar los registros.
+    2. Para cada catálogo en la lista de catálogos, se conecta a la base de datos PostgreSQL y
+       ejecuta una consulta SQL para obtener el total de importe, utilidad y unidades vendidas
+       agrupados por familia y subfamilia.
+    3. Con los resultados obtenidos, busca los IDs de las familias y subfamilias en la base de 
+       datos MySQL:
+        - Si no existe un registro en product_abc para el catálogo, familia, subfamilia y año
+          especificado, se inserta un nuevo registro con los datos obtenidos.
+        - Si ya existe un registro, se actualizan los valores de importe total, utilidad y
+          unidades vendidas. 
+    4. Si el año es el año actual, se repite el proceso de inserción o actualización de registros
+    5. Finalmente, se cierra la conexión a la base de datos.
+"""
 async def upsert_product_abc_part1(catalog_list, year):
     try:
         actual_year = datetime.datetime.now().year
