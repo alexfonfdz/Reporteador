@@ -9,7 +9,7 @@ from django.contrib.auth.models import User
 # Create your models here.
 class Family(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
-    id_admin = models.IntegerField(unique=True)
+    id_admin = models.IntegerField(unique=True, null=True, blank=True)
 
     def __str__(self):
         return self.name
@@ -21,7 +21,7 @@ class Family(models.Model):
     
 class SubFamily(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
-    id_admin = models.IntegerField(unique=True)
+    id_admin = models.IntegerField(unique=True, null=True, blank=True)
 
     def __str__(self):
         return self.name
@@ -34,7 +34,7 @@ class SubFamily(models.Model):
 class Product(models.Model):
     family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='products')
     subfamily = models.ForeignKey(SubFamily, on_delete=models.PROTECT, related_name='products')
-    id_admin = models.IntegerField(unique=True)
+    id_admin = models.IntegerField(unique=True, null=True, blank=True)
     code = models.CharField(max_length=100, unique=True)
     description = models.TextField()
 
