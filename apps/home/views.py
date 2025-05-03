@@ -20,6 +20,7 @@ from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_produ
 import json
 import asyncio
 import psycopg2 as p
+import pandas as pd
 
 
 @login_required(login_url="/login/")
@@ -298,6 +299,8 @@ def get_almacen_data(request):
 
     return JsonResponse(data, safe=False)
 
+
+# ==================================================================================================== # 
 @csrf_exempt
 def get_families_from_admintotal(request):
     try:
@@ -320,7 +323,22 @@ def get_products_from_admintotal(request):
 @csrf_exempt
 def get_catalogs_from_admintotal(request):
     try:
-        asyncio.run(upsert_catalogs())
+        # Leemos el archivo Excel
+        df = pd.read_excel('apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx', sheet_name='Hoja1')
+
+        # Limpiamos los valores de la columna "Catalogo" (eliminamos espacios y convertimos a string)
+        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
+
+        # Reemplazamos valores como "N/A" con NaN para unificar el tratamiento
+        df["Catalogo"].replace(["N/A", "n/a"], pd.NA, inplace=True)
+
+        # Filtramos las filas donde "Catalogo" no sea 0, vacío, N/A o nan
+        df = df[~df["Catalogo"].isin(["0", ""]) & ~df["Catalogo"].isna()]
+
+        print(df["Catalogo"].value_counts())
+
+        # Guardamos el DataFrame filtrado en un nuevo archivo Excel
+        df.to_excel('apps/static/data/Catalogo.para.agrupaciones.MARW_filtrado.xlsx', index=False)
 
         return JsonResponse({'msg': "Se han insertado los catálogos satisfactoriamente"}, safe=False)
     except Exception as e:
