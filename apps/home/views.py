@@ -320,26 +320,63 @@ def get_products_from_admintotal(request):
     except Exception as e:
         return JsonResponse({'Hubo un error al insertar los productos': str(e)}, status=500)
     
+
+"""
+   Lee y filtra el archivo Excel eliminando filas donde "Catalogo" es 0 o vacío.
+"""
+def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
+    # Leemos el archivo Excel
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+    # Reemplazamos valores como NaN con "0"
+    df['Catalogo'].fillna('0', inplace=True)
+
+    # Convertimos todos los valores a cadenas para evitar problemas de tipo
+    df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
+
+    # Filtramos las filas donde "Catalogo" no sea 0 o vacío
+    df = df[~df["Catalogo"].isin(["0", ""])]
+
+    # Guardar el DataFrame filtrado en un archivo Excel
+    df.to_excel(output_filtered_file, index=False)
+
+    return df
+
+"""
+    Agrupa los catálogos y subfamilias en una lista.       
+       - Si un catálogo tiene solo una subfamilia, se agrega el nombre del catálogo a la lista.
+       - Si un catálogo tiene más de una subfamilia, se agrega el nombre del catálogo seguido de cada subfamilia a la lista.
+"""
+def group_catalogs(df, output_grouped_file):    
+    result = []
+    for catalogo, group in df.groupby("Catalogo"):
+        subfamilias = group["Subfamilia"].unique()
+        if len(subfamilias) == 1:
+            result.append(catalogo)
+        else:
+            for subfamilia in subfamilias:
+                result.append(f"{catalogo} {subfamilia}")
+    
+    # Guardar el resultado en un archivo Excel
+    result_df = pd.DataFrame(result, columns=["Catalogos Agrupados"])
+    result_df.to_excel(output_grouped_file, index=False)
+    return result
+
 @csrf_exempt
 def get_catalogs_from_admintotal(request):
     try:
-        # Leemos el archivo Excel
-        df = pd.read_excel('apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx', sheet_name='Hoja1')
+        # Ruta del archivo y nombre de la hoja
+        file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx'
+        sheet_name = 'Hoja1'
+        output_filtered_file = 'apps/static/data/Catalogo_Filtrado.xlsx'
+        output_grouped_file = 'apps/static/data/Catalogos_Agrupados.xlsx'
 
-        # Reemplazamos valores como NaN con "0"
-        df['Catalogo'].fillna('0', inplace=True)
+        # Leer y filtrar el archivo Excel y guardar el archivo filtrado
+        df = read_and_filter_excel(file_path, sheet_name, output_filtered_file)
 
-        # Convertimos todos los valores a cadenas para evitar problemas de tipo
-        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()                
-        
-        # Filtramos las filas donde "Catalogo" no sea 0 o vacío
-        df = df[~df["Catalogo"].isin(["0", ""])]
+        # Agrupar los catálogos y guardar en un archivo Excel
+        group_catalogs(df, output_grouped_file)
 
-        print(df["Catalogo"].value_counts())
-
-        # Guardamos el DataFrame filtrado en un nuevo archivo Excel
-        df.to_excel('apps/static/data/Catalogo.para.agrupaciones.MARW_filtrado.xlsx', index=False)
-
-        return JsonResponse({'msg': "Se han insertado los catálogos satisfactoriamente"}, safe=False)
+        return JsonResponse({'msg': "Se han guardado los archivos filtrados y agrupados satisfactoriamente"}, safe=False)
     except Exception as e:
-        return JsonResponse({'Hubo un error al insertar los catálogos': str(e)}, status=500)
+        return JsonResponse({'Hubo un error al procesar los catálogos': str(e)}, status=500)
