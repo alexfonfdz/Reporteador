@@ -321,65 +321,110 @@ def get_products_from_admintotal(request):
         return JsonResponse({'Hubo un error al insertar los productos': str(e)}, status=500)
     
 
-"""
-   Lee y filtra el archivo Excel eliminando filas donde "Catalogo" es 0 o vacío.
-"""
 def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
-    # Leemos el archivo Excel
-    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    """
+    Lee y filtra un archivo Excel eliminando filas donde "Catalogo" es 0 o vacío.
+    Guarda el resultado filtrado en un archivo Excel.
 
-    # Reemplazamos valores como NaN con "0"
-    df['Catalogo'].fillna('0', inplace=True)
+    Args:
+        file_path (str): Ruta del archivo Excel de entrada.
+        sheet_name (str): Nombre de la hoja a leer.
+        output_filtered_file (str): Ruta del archivo Excel filtrado de salida.
 
-    # Convertimos todos los valores a cadenas para evitar problemas de tipo
-    df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
+    Returns:
+        pd.DataFrame: DataFrame filtrado.
+    """
+    try:
+        # Leer el archivo Excel
+        df = pd.read_excel(file_path, sheet_name=sheet_name)
 
-    # Filtramos las filas donde "Catalogo" no sea 0 o vacío
-    df = df[~df["Catalogo"].isin(["0", ""])]
+        # Validar que las columnas necesarias existan
+        if "Catalogo" not in df.columns:
+            raise ValueError("La columna 'Catalogo' no existe en el archivo Excel.")
 
-    # Guardar el DataFrame filtrado en un archivo Excel
-    df.to_excel(output_filtered_file, index=False)
+        # Reemplazar valores NaN con "0"
+        df['Catalogo'].fillna('0', inplace=True)
 
-    return df
+        # Convertir valores a cadenas y eliminar espacios
+        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
 
-"""
-    Agrupa los catálogos y subfamilias en una lista.       
-       - Si un catálogo tiene solo una subfamilia, se agrega el nombre del catálogo a la lista.
-       - Si un catálogo tiene más de una subfamilia, se agrega el nombre del catálogo seguido de cada subfamilia a la lista.
-"""
-async def group_catalogs(df, output_grouped_file):    
-    result = []
-    for catalogo, group in df.groupby("Catalogo"):
-        subfamilias = group["Subfamilia"].unique()
-        if len(subfamilias) == 1:
-            result.append(catalogo)
-        else:
-            for subfamilia in subfamilias:
-                result.append(f"{catalogo} {subfamilia}")
+        # Filtrar filas donde "Catalogo" no sea válido
+        df = df[~df["Catalogo"].isin(["0", ""])]
 
-    for catalog in result:
-        await upsert_catalogs(catalog)
-    
-    # Guardar el resultado en un archivo Excel
-    result_df = pd.DataFrame(result, columns=["Catalogos Agrupados"])
-    result_df.to_excel(output_grouped_file, index=False)
-    return result
+        # Guardar el DataFrame filtrado en un archivo Excel
+        df.to_excel(output_filtered_file, index=False)
+
+        return df
+    except Exception as e:
+        raise RuntimeError(f"Error al leer y filtrar el archivo Excel: {e}")
+
+async def group_catalogs(df, output_grouped_file):
+    """
+    Agrupa los catálogos y subfamilias en una lista y guarda el resultado en un archivo Excel.
+    También inserta los catálogos agrupados en la base de datos.
+
+    Args:
+        df (pd.DataFrame): DataFrame con los datos a agrupar.
+        output_grouped_file (str): Ruta del archivo Excel agrupado de salida.
+
+    Returns:
+        list: Lista de catálogos agrupados.
+    """
+    try:
+        # Validar que las columnas necesarias existan
+        if "Catalogo" not in df.columns or "Subfamilia" not in df.columns:
+            raise ValueError("Las columnas 'Catalogo' y 'Subfamilia' no existen en el DataFrame.")
+
+        result = []
+        for catalogo, group in df.groupby("Catalogo"):
+            subfamilias = group["Subfamilia"].unique()
+            if len(subfamilias) == 1:
+                result.append(catalogo)
+            else:
+                for subfamilia in subfamilias:
+                    result.append(f"{catalogo} {subfamilia}")
+
+        # Insertar los catálogos agrupados en la base de datos
+        for catalog in result:
+            await upsert_catalogs(catalog)
+
+        # Guardar el resultado en un archivo Excel
+        result_df = pd.DataFrame(result, columns=["Catalogos Agrupados"])
+        result_df.to_excel(output_grouped_file, index=False)
+
+        return result
+    except Exception as e:
+        raise RuntimeError(f"Error al agrupar los catálogos: {e}")
 
 @csrf_exempt
 def get_catalogs_from_admintotal(request):
+    """
+    Endpoint para procesar un archivo Excel, filtrar los catálogos y agruparlos.
+    Guarda los resultados en dos archivos Excel y los inserta en la base de datos.
+
+    Args:
+        request (HttpRequest): Solicitud HTTP.
+
+    Returns:
+        JsonResponse: Respuesta JSON con el resultado de la operación.
+    """
     try:
-        # Ruta del archivo y nombre de la hoja
+        # Rutas de los archivos
         file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx'
         sheet_name = 'Hoja1'
         output_filtered_file = 'apps/static/data/Catalogo_Filtrado.xlsx'
         output_grouped_file = 'apps/static/data/Catalogos_Agrupados.xlsx'
 
-        # Leer y filtrar el archivo Excel y guardar el archivo filtrado
+        # Leer y filtrar el archivo Excel
         df = read_and_filter_excel(file_path, sheet_name, output_filtered_file)
 
         # Agrupar los catálogos y guardar en un archivo Excel
         asyncio.run(group_catalogs(df, output_grouped_file))
 
         return JsonResponse({'msg': "Se han guardado los archivos filtrados y agrupados satisfactoriamente"}, safe=False)
+    except ValueError as ve:
+        return JsonResponse({'error': str(ve)}, status=400)
+    except RuntimeError as re:
+        return JsonResponse({'error': str(re)}, status=500)
     except Exception as e:
-        return JsonResponse({'Hubo un error al procesar los catálogos': str(e)}, status=500)
+        return JsonResponse({'error': f"Error inesperado: {e}"}, status=500)
