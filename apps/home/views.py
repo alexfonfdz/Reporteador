@@ -326,14 +326,14 @@ def get_catalogs_from_admintotal(request):
         # Leemos el archivo Excel
         df = pd.read_excel('apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx', sheet_name='Hoja1')
 
-        # Limpiamos los valores de la columna "Catalogo" (eliminamos espacios y convertimos a string)
-        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
+        # Reemplazamos valores como NaN con "0"
+        df['Catalogo'].fillna('0', inplace=True)
 
-        # Reemplazamos valores como "N/A" con NaN para unificar el tratamiento
-        df["Catalogo"].replace(["N/A", "n/a"], pd.NA, inplace=True)
-
-        # Filtramos las filas donde "Catalogo" no sea 0, vacío, N/A o nan
-        df = df[~df["Catalogo"].isin(["0", ""]) & ~df["Catalogo"].isna()]
+        # Convertimos todos los valores a cadenas para evitar problemas de tipo
+        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()                
+        
+        # Filtramos las filas donde "Catalogo" no sea 0 o vacío
+        df = df[~df["Catalogo"].isin(["0", ""])]
 
         print(df["Catalogo"].value_counts())
 
