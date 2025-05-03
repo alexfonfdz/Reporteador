@@ -347,7 +347,7 @@ def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
        - Si un catálogo tiene solo una subfamilia, se agrega el nombre del catálogo a la lista.
        - Si un catálogo tiene más de una subfamilia, se agrega el nombre del catálogo seguido de cada subfamilia a la lista.
 """
-def group_catalogs(df, output_grouped_file):    
+async def group_catalogs(df, output_grouped_file):    
     result = []
     for catalogo, group in df.groupby("Catalogo"):
         subfamilias = group["Subfamilia"].unique()
@@ -356,6 +356,9 @@ def group_catalogs(df, output_grouped_file):
         else:
             for subfamilia in subfamilias:
                 result.append(f"{catalogo} {subfamilia}")
+
+    for catalog in result:
+        await upsert_catalogs(catalog)
     
     # Guardar el resultado en un archivo Excel
     result_df = pd.DataFrame(result, columns=["Catalogos Agrupados"])
@@ -375,7 +378,7 @@ def get_catalogs_from_admintotal(request):
         df = read_and_filter_excel(file_path, sheet_name, output_filtered_file)
 
         # Agrupar los catálogos y guardar en un archivo Excel
-        group_catalogs(df, output_grouped_file)
+        asyncio.run(group_catalogs(df, output_grouped_file))
 
         return JsonResponse({'msg': "Se han guardado los archivos filtrados y agrupados satisfactoriamente"}, safe=False)
     except Exception as e:
