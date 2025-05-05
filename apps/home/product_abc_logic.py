@@ -201,27 +201,33 @@ async def upsert_product_catalogs(product_code, catalog_description, year, subfa
         cursor.execute("SELECT id FROM product WHERE code = %s", (product_code,))
         product_id = cursor.fetchone()
         if product_id is None:
+            print(f"Producto no encontrado: {product_code}")
             return False
         product_id = product_id[0]
+
         cursor.execute("SELECT id FROM catalog WHERE description = %s", (catalog_description,))
         catalog_id = cursor.fetchone()
         if catalog_id is None:
+            print(f"Catálogo no encontrado: {catalog_description}")
             return False
         catalog_id = catalog_id[0]
-        cursor.execute("SELECT id, product_id, catalog_id, year FROM product_catalog WHERE product_id = %s", (product_id,))
+
+        cursor.execute("SELECT id, product_id, catalog_id, add_year FROM product_catalog WHERE product_id = %s", (product_id,))
         row = cursor.fetchone()
-        if row is not None and row[0] is not None:
+        if row is not None:
+            print(f"Registro encontrado en product_catalog: {row}")
             if row[2] != catalog_id or row[3] == year:
-                cursor.execute("UPDATE product_catalog SET catalog_id = %s WHERE product_id = %s AND year = %s", (catalog_id, product_id, year))
+                print("Actualizando registro existente.")
+                cursor.execute("UPDATE product_catalog SET catalog_id = %s WHERE product_id = %s AND add_year = %s", (catalog_id, product_id, year))
+            elif row[1] == product_id and row[2] == catalog_id and row[3] == year:
+                print("Registro ya existe, no se realiza ninguna acción.")
             else:
-                cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
-        elif row[1] == product_id and row[2] == catalog_id and row[3] == year:
-            pass
+                print("Insertando nuevo registro.")
+                cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
         else:
-            cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
+            print("Insertando nuevo registro porque no existe en product_catalog.")
+            cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
         conn.commit()
-        cursor.close()
-        conn.close()
         return True
     except Exception as e:
         print(f"Error: {e}")

@@ -15,8 +15,9 @@ from django.core.paginator import Paginator
 from calendar import month_name
 from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
-from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA
-from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs
+from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT
+from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs, upsert_product_catalogs
+import mysql.connector as m
 import json
 import asyncio
 import psycopg2 as p
@@ -442,4 +443,64 @@ def get_catalogs_from_admintotal(request):
     except Exception as e:
         return JsonResponse({'error': f"Error inesperado: {e}"}, status=500)
     
+@csrf_exempt
+def insert_product_catalog(request):
+    """
+    Endpoint para insertar o actualizar la información de la tabla product_catalog.
+    """
+    try:
+        # Obtener el año del request
+        data = json.loads(request.body)
+        year = data.get('year')
 
+        # Validar que el año esté presente
+        if not year:
+            return JsonResponse({'error': 'El parámetro "year" es obligatorio.'}, status=400)
+
+        # Leer el archivo Excel
+        file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx'
+        df = pd.read_excel(file_path)
+
+        # Imprimir las columnas para depuración
+        print("Columnas encontradas en el archivo Excel:", df.columns)
+
+        # Validar que las columnas necesarias existan
+        if "Catalogo" not in df.columns or "Codigo" not in df.columns:
+            return JsonResponse({'error': f'El archivo Excel debe contener las columnas "Catalogo" y "Codigo". Columnas encontradas: {list(df.columns)}'}, status=400)
+
+        # Conectar a la base de datos MySQL
+        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
+        cursor = conn.cursor()
+
+        # Iterar sobre cada fila del archivo Excel
+        for _, row in df.iterrows():
+            catalog_description = row["Catalogo"]
+            product_code = row["Codigo"]
+
+            # Buscar el ID del producto en la tabla product
+            cursor.execute("SELECT id FROM product WHERE code = %s", (product_code,))
+            product_id = cursor.fetchone()
+            if product_id is None:
+                continue  # Si no se encuentra el producto, pasar a la siguiente fila
+            product_id = product_id[0]
+
+            # Buscar el ID del catálogo en la tabla catalog
+            cursor.execute("SELECT id FROM catalog WHERE description = %s", (catalog_description,))
+            catalog_id = cursor.fetchone()
+            if catalog_id is None:
+                continue  # Si no se encuentra el catálogo, pasar a la siguiente fila
+            catalog_id = catalog_id[0]
+
+            # Insertar o actualizar en la tabla product_catalog
+            asyncio.run(upsert_product_catalogs(product_code, catalog_description, year, None))
+
+        # Cerrar la conexión a la base de datos
+        cursor.close()
+        conn.close()
+
+        return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_catalog.'}, status=200)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'El cuerpo de la solicitud debe ser un JSON válido.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Error inesperado: {e}'}, status=500)
