@@ -492,7 +492,7 @@ def insert_product_catalog(request):
             catalog_id = catalog_id[0]
 
             # Insertar o actualizar en la tabla product_catalog
-            asyncio.run(upsert_product_catalogs(product_code, catalog_description, year, None))
+            asyncio.run(upsert_product_catalogs(product_code, catalog_description, year))
 
         # Cerrar la conexión a la base de datos
         cursor.close()

@@ -194,7 +194,7 @@ async def upsert_catalogs(description):
           un nuevo registro en la tabla product_catalog.
     5. Se cierra la conexión a la base de datos.    
 """
-async def upsert_product_catalogs(product_code, catalog_description, year, subfamily):
+async def upsert_product_catalogs(product_code, catalog_description, year):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
@@ -283,6 +283,10 @@ async def get_product_catalogs(year):
             conn.close()
         if cursor:
             cursor.close()
+
+
+async def upsert_product_abc_part0(year, enterprise):
+    pass
 
 """
   La función 'upsert_product_abc_part1' inserta o actualiza los registros en la tabla
@@ -1060,11 +1064,12 @@ async def upsert_product_abc_part7(year):
         if cursor:
             cursor.close()
 
-async def upsert_all(year):
+async def upsert_all(year, enterprise):
     try:
+        await upsert_product_abc_part0(year, enterprise)
         catalog_list = await get_product_catalogs(year)
         if catalog_list:
-                await upsert_product_abc_part1(catalog_list, year)
+                await upsert_product_abc_part1(catalog_list, year)        
                 await upsert_product_abc_part2(year)
                 await upsert_product_abc_part3(year)
                 await upsert_product_abc_part4(year)
