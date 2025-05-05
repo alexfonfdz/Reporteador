@@ -321,7 +321,7 @@ def get_products_from_admintotal(request):
         return JsonResponse({'Hubo un error al insertar los productos': str(e)}, status=500)
     
 
-def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
+def read_and_filter_excel(file_path, output_filtered_file):
     """
     Lee y filtra un archivo Excel eliminando filas donde "Catalogo" es 0 o vacío.
     Guarda el resultado filtrado en un archivo Excel.
@@ -336,7 +336,7 @@ def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
     """
     try:
         # Leer el archivo Excel
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        df = pd.read_excel(file_path)
 
         # Validar que las columnas necesarias existan
         if "Catalogo" not in df.columns:
@@ -358,43 +358,45 @@ def read_and_filter_excel(file_path, sheet_name, output_filtered_file):
     except Exception as e:
         raise RuntimeError(f"Error al leer y filtrar el archivo Excel: {e}")
 
-async def group_catalogs(df, output_grouped_file):
+
+def process_and_update_categories(file_path, output_file):
     """
-    Agrupa los catálogos y subfamilias en una lista y guarda el resultado en un archivo Excel.
-    También inserta los catálogos agrupados en la base de datos.
+    Procesa un archivo Excel y actualiza los valores de la columna "Catalogo" 
+    según la lógica proporcionada.
 
     Args:
-        df (pd.DataFrame): DataFrame con los datos a agrupar.
-        output_grouped_file (str): Ruta del archivo Excel agrupado de salida.
+        file_path (str): Ruta del archivo Excel de entrada.
+        output_file (str): Ruta del archivo Excel de salida con las categorías actualizadas.
 
     Returns:
-        list: Lista de catálogos agrupados.
+        pd.DataFrame: DataFrame con las categorías actualizadas.
     """
     try:
+        # Leer el archivo Excel
+        df = pd.read_excel(file_path)
+
         # Validar que las columnas necesarias existan
-        if "Catalogo" not in df.columns or "Subfamilia" not in df.columns:
-            raise ValueError("Las columnas 'Catalogo' y 'Subfamilia' no existen en el DataFrame.")
+        if "Subfamilia" not in df.columns or "Catalogo" not in df.columns:
+            raise ValueError("Las columnas 'Subfamilia' y 'Catalogo' deben existir en el archivo Excel.")
 
-        result = []
-        for catalogo, group in df.groupby("Catalogo"):
-            subfamilias = group["Subfamilia"].unique()
-            if len(subfamilias) == 1:
-                result.append(catalogo)
-            else:
-                for subfamilia in subfamilias:
-                    result.append(f"{catalogo} {subfamilia}")
+        # Agrupar por "Catalogo" y contar las subfamilias únicas
+        category_group = df.groupby("Catalogo")["Subfamilia"].nunique()
 
-        # Insertar los catálogos agrupados en la base de datos
-        for catalog in result:
-            await upsert_catalogs(catalog)
+        # Aplicar la lógica para actualizar las categorías
+        def update_category(row):
+            if category_group[row["Catalogo"]] > 1:
+                return f"{row['Catalogo']} {row['Subfamilia']}"
+            return row["Catalogo"]
 
-        # Guardar el resultado en un archivo Excel
-        result_df = pd.DataFrame(result, columns=["Catalogos Agrupados"])
-        result_df.to_excel(output_grouped_file, index=False)
+        df["Catalogo"] = df.apply(update_category, axis=1)
 
-        return result
+        # Guardar el DataFrame actualizado en un nuevo archivo Excel
+        df.to_excel(output_file, index=False)
+
+        return df
     except Exception as e:
-        raise RuntimeError(f"Error al agrupar los catálogos: {e}")
+        raise RuntimeError(f"Error al procesar y actualizar las categorías: {e}")
+
 
 @csrf_exempt
 def get_catalogs_from_admintotal(request):
@@ -411,15 +413,16 @@ def get_catalogs_from_admintotal(request):
     try:
         # Rutas de los archivos
         file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx'
-        sheet_name = 'Hoja1'
+        output_file = 'apps/static/data/Catalogo_Catalogos_Actualizadas.xlsx'
         output_filtered_file = 'apps/static/data/Catalogo_Filtrado.xlsx'
         output_grouped_file = 'apps/static/data/Catalogos_Agrupados.xlsx'
+        
 
         # Leer y filtrar el archivo Excel
-        df = read_and_filter_excel(file_path, sheet_name, output_filtered_file)
+        df = read_and_filter_excel(file_path, output_filtered_file)
 
         # Agrupar los catálogos y guardar en un archivo Excel
-        asyncio.run(group_catalogs(df, output_grouped_file))
+        updated_df = process_and_update_categories(file_path, output_file)
 
         return JsonResponse({'msg': "Se han guardado los archivos filtrados y agrupados satisfactoriamente"}, safe=False)
     except ValueError as ve:
