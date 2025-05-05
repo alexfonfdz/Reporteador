@@ -413,21 +413,33 @@ def get_catalogs_from_admintotal(request):
     try:
         # Rutas de los archivos
         file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx'
-        output_file = 'apps/static/data/Catalogo_Catalogos_Actualizadas.xlsx'
-        output_filtered_file = 'apps/static/data/Catalogo_Filtrado.xlsx'
-        output_grouped_file = 'apps/static/data/Catalogos_Agrupados.xlsx'
-        
+        output_filtered_file = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Filtrado.xlsx'
+        output_file = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx'
 
         # Leer y filtrar el archivo Excel
-        df = read_and_filter_excel(file_path, output_filtered_file)
+        read_and_filter_excel(file_path, output_filtered_file)
 
         # Agrupar los catálogos y guardar en un archivo Excel
-        updated_df = process_and_update_categories(file_path, output_file)
+        process_and_update_categories(file_path, output_file)
 
-        return JsonResponse({'msg': "Se han guardado los archivos filtrados y agrupados satisfactoriamente"}, safe=False)
+        # Leer el archivo resultante y extraer los catálogos
+        df_updated = pd.read_excel(output_file)
+        if "Catalogo" not in df_updated.columns:
+            raise ValueError("La columna 'Catalogo' no existe en el archivo Excel actualizado.")
+
+        # Obtener los catálogos únicos
+        catalogos = df_updated["Catalogo"].drop_duplicates().tolist()
+
+        # Insertar los catálogos en la base de datos uno por uno
+        for catalogo in catalogos:
+            asyncio.run(upsert_catalogs(catalogo))
+
+        return JsonResponse({'msg': "Se han guardado los archivos filtrados, agrupados e insertado los catálogos satisfactoriamente"}, safe=False)
     except ValueError as ve:
         return JsonResponse({'error': str(ve)}, status=400)
     except RuntimeError as re:
         return JsonResponse({'error': str(re)}, status=500)
     except Exception as e:
         return JsonResponse({'error': f"Error inesperado: {e}"}, status=500)
+    
+

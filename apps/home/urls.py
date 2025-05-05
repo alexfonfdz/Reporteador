@@ -25,7 +25,7 @@ urlpatterns = [
     # Migrar registros de admin_total a la base de datos local
     path('get_families_from_admintotal', views.get_families_from_admintotal, name='get_families_from_admintotal'),
     path('get_products_from_admintotal', views.get_products_from_admintotal, name='get_products_from_admintotal'),    
-    path('get_catalogs_from_admintotal', views.get_catalogs_from_admintotal, name='get_catalogs_from_admintotal'),
+    path('get_catalogs_from_admintotal', views.get_catalogs_from_admintotal, name='get_catalogs_from_admintotal'),    
     
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),
