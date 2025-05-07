@@ -16,17 +16,20 @@
                 <div class="card-body">
                     <form id="filter-form" method="get">
                         <div class="row">
-                            <div class="col-md-6">
-                                <input type="text" name="descripcion" id="descripcion" class="form-control" placeholder="Lorem ipsum dolor sit amet" aria-label="Descripcion" aria-describedby="basic-addon1">
+                            <div class="col-md-3">
+                                <input type="text" name="familia" id="familia" class="form-control" placeholder="Filtrar por familia" aria-label="Filtrar por familia" aria-describedby="basic-addon1">
                             </div>
-                        </div>
+                            <div class="col-md-3">
+                                <input type="text" name="subfamilia" id="subfamilia" class="form-control" placeholder="Filtrar por subfamilia" aria-label="Filtrar por subfamilia" aria-describedby="basic-addon1">
+                            </div>
+                            <div class="col-md-3">
+                                 <input type="text" name="anio" id="anio" class="form-control" placeholder="Filtrar por año" aria-label="Filtrar por año" aria-describedby="basic-addon1">
+                            </div>
+                       </div>
                     </form>
                     <div class="table-responsive mt-3">
-                        <table class="table">
+                        <table class="table table-hover">
                             <thead class=" text-primary">
-                                <th>Lorem ipsum</th>
-                                <th>Lorem ipsum</th>
-                                <th>Lorem ipsum</th>
                             </thead>
                             <tbody id="clientes-table-body">
                                 
@@ -34,9 +37,9 @@
                         </table>
                     </div>
                     <div class="pagination">
-                        <button id="prev-page" class="btn btn-primary" disabled>Anterior</button>
+                        <button id="prev-page" class="btn btn-primary">Anterior</button>
                         <span id="page-info" class="mx-2"></span>
-                        <button id="next-page" class="btn btn-primary" disabled>Siguiente</button>
+                        <button id="next-page" class="btn btn-primary">Siguiente</button>
                     </div>
                 </div>
             </div>
@@ -46,5 +49,5 @@
 {% endblock content %}
 
 {% block javascripts %}
-<script></script>
+<script type="module" src="static/assets/html-js/productosabc/loadDataProductosABC.js"></script>
 {% endblock javascripts %}

@@ -5,7 +5,7 @@ Copyright (c) 2019 - present AppSeed.us
 
 from django import template
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect
 from django.template import loader
 from django.urls import reverse
 from calendar import month_name
@@ -18,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT
 import json
 import psycopg2 as p
+import pandas as pd
 
 
 @login_required(login_url="/login/")
@@ -261,4 +262,28 @@ def get_almacen_data(request):
         'current_page': page_obj.number,
     }
 
+    return JsonResponse(data, safe=False)
+
+df = pd.read_csv('mock.csv')
+df = df.where(pd.notnull(df), None)
+records = df.to_dict(orient='records')
+@csrf_exempt
+def debug_productosabc(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['Get'])
+
+    paginator = Paginator(records, 10)
+    page = paginator.page(request.GET.get('page',1))
+
+    page_content = list(page)
+
+    data ={
+        "data": page_content,
+        "has_next": page.has_next(),
+        "has_previous": page.has_previous(),
+        "num_pages": paginator.num_pages,
+        "current_page": page.number
+    }
+
+    
     return JsonResponse(data, safe=False)
