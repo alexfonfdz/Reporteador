@@ -5,6 +5,7 @@ Copyright (c) 2019 - present AppSeed.us
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 
 # Create your models here.
 class Family(models.Model):
@@ -61,7 +62,7 @@ class ProductCatalog(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='catalogs')
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='products')
     add_year = models.IntegerField()
-    last_update = models.DateTimeField(null=True, blank=True, default=None)
+    last_update = models.DateTimeField(null=True, blank=True, default=timezone.now)
 
     def __str__(self):
         return f"{self.product} - {self.catalog}"
