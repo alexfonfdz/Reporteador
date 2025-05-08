@@ -16,7 +16,7 @@ from calendar import month_name
 from datetime import datetime
 from django.views.decorators.csrf import csrf_exempt
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT
-from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs, upsert_product_catalogs
+from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs, upsert_product_catalogs, upsert_all
 import mysql.connector as m
 import json
 import asyncio
@@ -504,3 +504,17 @@ def insert_product_catalog(request):
         return JsonResponse({'error': 'El cuerpo de la solicitud debe ser un JSON válido.'}, status=400)
     except Exception as e:
         return JsonResponse({'error': f'Error inesperado: {e}'}, status=500)
+    
+@csrf_exempt
+def insert_data_to_product_abc(request):
+    try:
+        data = json.loads(request.body)
+        year = data.get('year')
+        enterprise = data.get('enterprise')
+        
+        # Ejecutar la función async usando asyncio.run
+        asyncio.run(upsert_all(year, enterprise))
+        
+        return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_abc.'}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': f'Error al insertar la información en product_abc: {e}'}, status=500)

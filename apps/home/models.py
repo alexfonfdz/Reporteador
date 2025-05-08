@@ -62,7 +62,7 @@ class ProductCatalog(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='catalogs')
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='products')
     add_year = models.IntegerField()
-    last_update = models.DateTimeField(null=True, blank=True, default=timezone.now)
+    last_update = models.DateTimeField( default=timezone.now, blank=True)
 
     def __str__(self):
         return f"{self.product} - {self.catalog}"
@@ -149,7 +149,7 @@ class ProductABC(models.Model):
 
     assigned_company = models.CharField(max_length=100, null=True, blank=True)
     year = models.IntegerField()
-    last_update = models.DateTimeField(auto_now=True)
+    last_update = models.DateTimeField(default=timezone.now, blank=True)
 
     class Meta:
         db_table = "product_abc"

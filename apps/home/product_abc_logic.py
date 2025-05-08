@@ -284,9 +284,65 @@ async def get_product_catalogs(year):
         if cursor:
             cursor.close()
 
+"""
+  La función 'upsert_product_abc_part0' inserta todos los catálogos de la tabla product_catalog
+  en la tabla product_abc de MySQL. Se le proporciona un año y un ID de empresa como parámetros.
 
-async def upsert_product_abc_part0(year, enterprise):
-    pass
+  Además de insertar los catálogos, también inserta las familias y subfamilias correspondientes.  
+"""
+async def upsert_product_abc_part0(year, enterprise="marw"):
+    try:
+        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
+        cursor = conn.cursor()
+        cursor.execute(f"""
+                        SELECT
+                            c.id AS 'Catalogo',
+                            f.id AS 'Familia',
+                            sf.id AS 'Subfamilia'
+                        FROM product_catalog pc
+                            INNER JOIN catalog c
+                                ON pc.catalog_id = c.id
+                            INNER JOIN product p
+                                ON pc.product_id = p.id
+                            INNER JOIN family f
+                                ON p.family_id = f.id
+                            INNER JOIN subfamily sf
+                                ON p.subfamily_id = sf.id
+                        WHERE pc.add_year = %s
+                        GROUP BY Catalogo, Familia, Subfamilia
+                       """, (year,))
+        rows = cursor.fetchall()
+
+        for row in rows:
+            catalog_id, family_id, subfamily_id = row
+            # Verificar si ya existe un registro con estos IDs
+            cursor.execute("""
+                SELECT id FROM product_abc 
+                WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s
+            """, (catalog_id, family_id, subfamily_id, year))
+            existing_record = cursor.fetchone()
+
+            # Si no existe, insertar el registro
+            if existing_record is None:
+                cursor.execute("""
+                    INSERT INTO product_abc (catalog_id, family_id, subfamily_id, year, assigned_company) 
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (catalog_id, family_id, subfamily_id, year, enterprise))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Registros insertados correctamente en product_abc.")
+        return True
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    finally:
+        if conn:
+            conn.close()
+        if cursor:
+            cursor.close()
+
 
 """
   La función 'upsert_product_abc_part1' inserta o actualiza los registros en la tabla
@@ -1067,18 +1123,18 @@ async def upsert_product_abc_part7(year):
 async def upsert_all(year, enterprise):
     try:
         await upsert_product_abc_part0(year, enterprise)
-        catalog_list = await get_product_catalogs(year)
-        if catalog_list:
-                await upsert_product_abc_part1(catalog_list, year)        
-                await upsert_product_abc_part2(year)
-                await upsert_product_abc_part3(year)
-                await upsert_product_abc_part4(year)
-                await upsert_product_abc_part5(year)
-                await upsert_product_abc_part6(year)
-                await upsert_product_abc_part7(year)
-                return True
-        else:
-            return False
+        # catalog_list = await get_product_catalogs(year)
+        # if catalog_list:
+        #         await upsert_product_abc_part1(catalog_list, year)        
+        #         await upsert_product_abc_part2(year)
+        #         await upsert_product_abc_part3(year)
+        #         await upsert_product_abc_part4(year)
+        #         await upsert_product_abc_part5(year)
+        #         await upsert_product_abc_part6(year)
+        #         await upsert_product_abc_part7(year)
+        #         return True
+        # else:
+        #     return False
     except Exception as e:
         print(f"Error: {e}")
         return False
