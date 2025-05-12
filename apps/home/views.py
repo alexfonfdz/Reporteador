@@ -8,12 +8,9 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseRedirect
 from django.template import loader
 from django.urls import reverse
-from calendar import month_name
-from datetime import datetime
 from django.http import JsonResponse
 from django.core.paginator import Paginator
-from calendar import month_name
-from datetime import datetime
+from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT
 from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs, upsert_product_catalogs, upsert_all
@@ -343,8 +340,8 @@ def read_and_filter_excel(file_path, output_filtered_file):
         if "Catalogo" not in df.columns:
             raise ValueError("La columna 'Catalogo' no existe en el archivo Excel.")
 
-        # Reemplazar valores NaN con "0"
-        df['Catalogo'].fillna('0', inplace=True)
+        # Reemplazar valores NaN con "0"        
+        df['Catalogo'] = df['Catalogo'].fillna('0')
 
         # Convertir valores a cadenas y eliminar espacios
         df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
@@ -425,11 +422,22 @@ def get_catalogs_from_admintotal(request):
 
         # Leer el archivo resultante y extraer los catálogos
         df_updated = pd.read_excel(output_file)
+
+        # Validar que las columnas necesarias existan
+        print("Columnas disponibles en el archivo Excel:", df_updated.columns)
+
         if "Catalogo" not in df_updated.columns:
             raise ValueError("La columna 'Catalogo' no existe en el archivo Excel actualizado.")
+        if "Familia" not in df_updated.columns:
+            raise ValueError("La columna 'Familia' no existe en el archivo Excel actualizado.")
+        if "Subfamilia" not in df_updated.columns:
+            raise ValueError("La columna 'Subfamilia' no existe en el archivo Excel actualizado.")
+
+        # Filtrar las columnas necesarias
+        df_updated = df_updated[["Catalogo", "Familia", "Subfamilia"]]
 
         # Obtener los catálogos únicos
-        catalogos = df_updated["Catalogo"].drop_duplicates().tolist()
+        catalogos = df_updated.drop_duplicates().values.tolist()
 
         # Insertar los catálogos en la base de datos uno por uno
         for catalogo in catalogos:
@@ -510,11 +518,9 @@ def insert_data_to_product_abc(request):
     try:
         data = json.loads(request.body)
         year = data.get('year')
-        enterprise = data.get('enterprise')
+        enterprise = data.get('enterprise')        
         
-        # Ejecutar la función async usando asyncio.run
         asyncio.run(upsert_all(year, enterprise))
-        
         return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_abc.'}, status=200)
     except Exception as e:
         return JsonResponse({'error': f'Error al insertar la información en product_abc: {e}'}, status=500)

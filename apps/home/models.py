@@ -48,7 +48,9 @@ class Product(models.Model):
         verbose_name_plural = "Products"
 
 class Catalog(models.Model):
-    description = models.TextField()
+    family = models.CharField(max_length=100, unique=False, blank=True, null=True)
+    subfamily = models.CharField(max_length=100, unique=False, blank=True, null=True)    
+    description = models.TextField()    
 
     def __str__(self):
         return self.description
@@ -73,9 +75,7 @@ class ProductCatalog(models.Model):
         verbose_name_plural = "Product Catalogs"
 
 class ProductABC(models.Model):
-    catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_products')
-    family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='abc_products')
-    subfamily = models.ForeignKey(SubFamily, on_delete=models.PROTECT, related_name='abc_products')
+    catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_products')    
     
     total_amount = models.DecimalField(max_digits=25, decimal_places=2, default=0, null=True, blank=True)
     profit = models.DecimalField(max_digits=25, decimal_places=2, default=0, null=True, blank=True)

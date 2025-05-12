@@ -2,6 +2,7 @@ from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_P
 import psycopg2 as p
 import mysql.connector as m
 import datetime
+import pandas as pd
 
 """
   La función 'upsert_families' realiza una sincronización de datos entre dos bases de 
@@ -154,23 +155,39 @@ async def upsert_products():
     3. Se cierra la conexión a la base de datos.    
 """
 async def upsert_catalogs(description):
-    try:
+    try:                
+        print(f"Catalogo: {description}")
+
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
-        if description is None or description == '' or description == ' ' or description == 'N/A' or description == '0' or description == 0:
-            return False
-        else:
-            cursor.execute("SELECT id FROM catalog WHERE description = %s", (description,))
-            row = cursor.fetchone()
+
+        # Verificar si la descripción es válida
+        if description[0] not in ['N/A', '0', 0, None, ''] and description[1] not in ['N/A', '0', 0, None, ''] and description[2] not in ['N/A', '0', 0, None, '']:
+
+            # Verificar si ya existe un catálogo con la misma descripción
+            cursor.execute("SELECT id FROM catalog WHERE description = %s", (description[0],))
+            row = cursor.fetchone()                                    
+
+            if pd.isna(description[1]):                
+                description[1] = None
+            
+            if pd.isna(description[2]):
+                description[2] = None
+            
+            # Si no existe, insertar un nuevo catálogo
             if row is None:
-                cursor.execute("INSERT INTO catalog (description) VALUES (%s)", (description,))
+                cursor.execute(
+                       "INSERT INTO catalog (description, family, subfamily) VALUES (%s, %s, %s)",
+                        (description[0], description[1], description[2],)
+                )
+        else:
+            raise ValueError("El formato de la descripcion no es valido")
+                                                    
         conn.commit()
         cursor.close()
-        conn.close()
-        return True
+        conn.close() 
     except Exception as e:
-        print(f"Error: {e}")
-        return False
+        print(f"Error: {e}")        
     finally:
         if conn:
             conn.close()
@@ -257,7 +274,21 @@ async def get_product_catalogs(year):
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
         # Tomar el ultimo catalogo de cada producto del año seleccionado para atras en caso de que no haya un catalogo para el año seleccionado
-        cursor.execute(f"SELECT p.code, c.id, pc.year FROM product_catalog as pc INNER JOIN catalog as c ON pc.catalog_id = c.id INNER JOIN product as p ON pc.product_id = p.id WHERE pc.year <= %s AND pc.year = (SELECT MAX(year) FROM product_catalog WHERE product_id = p.id AND year <= %s)", (year, year))
+        cursor.execute(f"""
+                        SELECT p.code, 
+                               c.id, 
+                               pc.add_year 
+                        FROM product_catalog as pc 
+                            INNER JOIN catalog as c 
+                                ON pc.catalog_id = c.id 
+                            INNER JOIN product as p 
+                                ON pc.product_id = p.id 
+                        WHERE pc.add_year <= %s 
+                            AND pc.add_year = (SELECT MAX(add_year) 
+                                               FROM product_catalog 
+                                               WHERE product_id = p.id 
+                                                    AND add_year <= %s)
+                       """, (year, year))
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -317,8 +348,12 @@ async def upsert_product_abc_part0(year, enterprise="marw"):
             catalog_id, family_id, subfamily_id = row
             # Verificar si ya existe un registro con estos IDs
             cursor.execute("""
-                SELECT id FROM product_abc 
-                WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s
+                            SELECT id 
+                            FROM product_abc 
+                            WHERE catalog_id = %s 
+                                AND family_id = %s 
+                                AND subfamily_id = %s 
+                                AND year = %s
             """, (catalog_id, family_id, subfamily_id, year))
             existing_record = cursor.fetchone()
 
@@ -363,23 +398,19 @@ async def upsert_product_abc_part0(year, enterprise="marw"):
     4. Si el año es el año actual, se repite el proceso de inserción o actualización de registros
     5. Finalmente, se cierra la conexión a la base de datos.
 """
-async def upsert_product_abc_part1(catalog_list, year):
+async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
     try:
         actual_year = datetime.datetime.now().year
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
         cursor.execute("SELECT year FROM product_abc WHERE year = %s", (year,))
         row = cursor.fetchone()
-        last_month_update = 0
-        if row is not None and row[0] is not None:
-            last_month_update = row[0].month
-        if row is None and year < actual_year or (year+1 == actual_year and last_month_update < 3):
+
+        if row is None and year < actual_year or (year + 1 == actual_year):
             for catalog in catalog_list:
-                conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+                conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
                 cursor_pg = conn_pg.cursor()
-                cursor_pg.execute(f"""SELECT
-                                        li.id AS FAMILIA,
-                                        sl.id AS SUBFAMILIA,
+                cursor_pg.execute(f"""SELECT                                        
                                         ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
                                         ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
                                         ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
@@ -410,23 +441,47 @@ async def upsert_product_abc_part1(catalog_list, year):
                 rows = cursor_pg.fetchall()
                 cursor_pg.close()
                 conn_pg.close()
-                for row in rows:
-                    cursor.execute(f"SELECT id FROM family WHERE id_admin = %s", (row[0],))
-                    family_id = cursor.fetchone()
-                    if family_id is None:
-                        return False
-                    family_id = family_id[0]
-                    cursor.execute(f"SELECT id FROM subfamily WHERE id_admin = %s", (row[1],))
-                    subfamily_id = cursor.fetchone()
-                    if subfamily_id is None:
-                        return False
-                    subfamily_id = subfamily_id[0]
-                    cursor.execute(f"""INSERT INTO product_abc (catalog_id, family_id, 
-                                        subfamily_id, total_amount, profit, units_sold, year) 
-                                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""", (catalog[0], family_id, subfamily_id, row[2], row[3], row[4], year))
+
+                for row in rows:                    
+                    total_amount = row[0]
+                    profit = row[1]
+                    units_sold = row[2]
+
+                    # Verificar si ya existe un registro con estos valores en product_abc
+                    cursor.execute(f"""
+                                    SELECT id 
+                                    FROM product_abc 
+                                    WHERE catalog_id = %s 
+                                        AND family_id = %s 
+                                        AND subfamily_id = %s 
+                                        AND year = %s
+                                        AND assigned_company = %s
+                                   
+                                        AND total_amount = %s
+                                        AND profit = %s
+                                        AND units_sold = %s
+                                   """, (catalog[0], family_id, subfamily_id, year))
+                    existing_record = cursor.fetchone()
+
+                    if existing_record is None:
+                        # Si no existe un registro, insertamos uno nuevo
+                        cursor.execute(f"""
+                                        INSERT INTO product_abc (total_amount, profit, units_sold) 
+                                        VALUES (%s, %s, %s)
+                                        WHERE catalog_id = %s 
+                                            AND family_id = %s 
+                                            AND subfamily_id = %s 
+                                            AND year = %s 
+                                            AND assigned_company = %s
+                                       """
+                                        ,(total_amount, profit, units_sold, catalog[0], family_id, subfamily_id, year, enterprise))                                       
+                    else:
+                        # Actualizar registro existente
+                        cursor.execute(f"""UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
+                                            WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s""", (total_amount, profit, units_sold, catalog[0], family_id, subfamily_id, year))
         elif year == actual_year:
             for catalog in catalog_list:
-                conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+                conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
                 cursor_pg = conn_pg.cursor()
                 cursor_pg.execute(f"""SELECT
                                         li.NOMBRE AS FAMILIA,
@@ -463,31 +518,39 @@ async def upsert_product_abc_part1(catalog_list, year):
                 conn_pg.close()
 
                 for row in rows:
-                    cursor.execute(f"SELECT id FROM family WHERE name = %s", (row[0],))
-                    family_id = cursor.fetchone()
-                    if family_id is None:
-                        return False
-                    family_id = family_id[0]
-                    cursor.execute(f"SELECT id FROM subfamily WHERE name = %s", (row[1],))
-                    subfamily_id = cursor.fetchone()
-                    if subfamily_id is None:
-                        return False
-                    subfamily_id = subfamily_id[0]
-                    cursor.execute(f"SELECT id FROM product_abc WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s", (catalog[0], family_id, subfamily_id, year))
-                    row2 = cursor.fetchone()
-                    if row2 is None:
-                        cursor.execute(f"""INSERT INTO product_abc (catalog_id, family_id, 
-                                        subfamily_id, total_amount, profit, units_sold, year) 
-                                        VALUES (%s, %s, %s, %s, %s, %s, %s)""", (catalog[0], family_id, subfamily_id, row[2], row[3], row[4], year))
+                    family_id = row[0]
+                    subfamily_id = row[1]
+                    total_amount = row[2]
+                    profit = row[3]
+                    units_sold = row[4]
+
+                    # Verificar si ya existe un registro con estos valores
+                    cursor.execute(f"""
+                                    SELECT id 
+                                    FROM product_abc 
+                                    WHERE catalog_id = %s 
+                                        AND family_id = %s 
+                                        AND subfamily_id = %s 
+                                        AND year = %s
+                                        AND assigned_company = %s
+                                   """, (catalog[0], family_id, subfamily_id, year))
+                    existing_record = cursor.fetchone()
+
+                    if existing_record is None:
+                        # Insertar nuevo registro
+                        cursor.execute(f"""
+                                        INSERT INTO product_abc (catalog_id, family_id, subfamily_id, total_amount, profit, units_sold, year) 
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s)""", (catalog[0], family_id, subfamily_id, total_amount, profit, units_sold, year))
                     else:
+                        # Actualizar registro existente
                         cursor.execute(f"""UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
-                                        WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s""", (row[2], row[3], row[4], catalog[0], family_id, subfamily_id, year))
+                                            WHERE catalog_id = %s AND family_id = %s AND subfamily_id = %s AND year = %s""", (total_amount, profit, units_sold, catalog[0], family_id, subfamily_id, year))
         else:
             pass                 
-            conn.commit()
-            cursor.close()
-            conn.close()
-            return True
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return True
     except Exception as e:
         print(f"Error: {e}")
         return False
@@ -1123,10 +1186,10 @@ async def upsert_product_abc_part7(year):
 async def upsert_all(year, enterprise):
     try:
         await upsert_product_abc_part0(year, enterprise)
-        # catalog_list = await get_product_catalogs(year)
-        # if catalog_list:
-        #         await upsert_product_abc_part1(catalog_list, year)        
-        #         await upsert_product_abc_part2(year)
+        catalog_list = await get_product_catalogs(year)        
+        # if catalog_list:               
+        #         await upsert_product_abc_part1(catalog_list, year, enterprise)        
+        #        await upsert_product_abc_part2(year)
         #         await upsert_product_abc_part3(year)
         #         await upsert_product_abc_part4(year)
         #         await upsert_product_abc_part5(year)
