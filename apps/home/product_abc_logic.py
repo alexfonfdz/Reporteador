@@ -235,15 +235,15 @@ async def upsert_product_catalogs(product_code, catalog_description, year):
             print(f"Registro encontrado en product_catalog: {row}")
             if row[2] != catalog_id or row[3] == year:
                 print("Actualizando registro existente.")
-                cursor.execute("UPDATE product_catalog SET catalog_id = %s WHERE product_id = %s AND add_year = %s", (catalog_id, product_id, year))
+                cursor.execute("UPDATE product_catalog SET catalog_id = %s, last_update = NOW() WHERE product_id = %s AND add_year = %s", (catalog_id, product_id, year))
             elif row[1] == product_id and row[2] == catalog_id and row[3] == year:
-                print("Registro ya existe, no se realiza ninguna acción.")
+                pass
             else:
                 print("Insertando nuevo registro.")
-                cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
+                cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year, last_update) VALUES (%s, %s, %s, NOW())", (product_id, catalog_id, year))
         else:
             print("Insertando nuevo registro porque no existe en product_catalog.")
-            cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year) VALUES (%s, %s, %s)", (product_id, catalog_id, year))
+            cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year, last_update) VALUES (%s, %s, %s, NOW())", (product_id, catalog_id, year))
         conn.commit()
         return True
     except Exception as e:
@@ -325,44 +325,34 @@ async def upsert_product_abc_part0(year, enterprise="marw"):
     try:
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
-        cursor.execute(f"""
-                        SELECT
-                            c.id AS 'Catalogo',
-                            f.id AS 'Familia',
-                            sf.id AS 'Subfamilia'
-                        FROM product_catalog pc
-                            INNER JOIN catalog c
-                                ON pc.catalog_id = c.id
-                            INNER JOIN product p
-                                ON pc.product_id = p.id
-                            INNER JOIN family f
-                                ON p.family_id = f.id
-                            INNER JOIN subfamily sf
-                                ON p.subfamily_id = sf.id
-                        WHERE pc.add_year = %s
-                        GROUP BY Catalogo, Familia, Subfamilia
+        cursor.execute("""
+                        SELECT 
+                            c.id 
+                        FROM catalog c
+                        INNER JOIN product_catalog pc
+                            ON pc.catalog_id = c.id
+                        WHERE pc.add_year <= %s
+                        GROUP BY c.id
                        """, (year,))
         rows = cursor.fetchall()
 
-        for row in rows:
-            catalog_id, family_id, subfamily_id = row
+        for row in rows:            
             # Verificar si ya existe un registro con estos IDs
             cursor.execute("""
                             SELECT id 
                             FROM product_abc 
-                            WHERE catalog_id = %s 
-                                AND family_id = %s 
-                                AND subfamily_id = %s 
+                            WHERE catalog_id = %s                                 
                                 AND year = %s
-            """, (catalog_id, family_id, subfamily_id, year))
+                                AND assigned_company = %s
+            """, (row[0], year, enterprise))
             existing_record = cursor.fetchone()
 
             # Si no existe, insertar el registro
             if existing_record is None:
                 cursor.execute("""
-                    INSERT INTO product_abc (catalog_id, family_id, subfamily_id, year, assigned_company) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (catalog_id, family_id, subfamily_id, year, enterprise))
+                    INSERT INTO product_abc (catalog_id, year, assigned_company, last_update) 
+                    VALUES (%s, %s, %s, NOW())
+                """, (row[0], year, enterprise))
 
         conn.commit()
         cursor.close()
