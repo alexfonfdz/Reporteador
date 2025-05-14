@@ -392,7 +392,7 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
     try:
         actual_year = datetime.datetime.now().year
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor()
+        cursor = conn.cursor(buffered=True)
         row_year = None
         cursor.execute("SELECT year FROM product_abc WHERE year = %s", (year,))        
         row_year_sql = cursor.fetchone()        
@@ -553,7 +553,7 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
     try:
         actual_year = datetime.datetime.now().year
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor()
+        cursor = conn.cursor(buffered=True)
         last_month_update = 0
         cursor.execute("SELECT MAX(last_update) FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
         row = cursor.fetchone()
