@@ -393,14 +393,22 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
         actual_year = datetime.datetime.now().year
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
+        row_year = None
         cursor.execute("SELECT year FROM product_abc WHERE year = %s", (year,))        
-        row = cursor.fetchone()                
+        row_year_sql = cursor.fetchone()        
+        if row_year_sql is not None:
+            row_year = row_year_sql[0]        
 
-        if row is None and year < actual_year or (int(year) + 1 == actual_year):
+        if row_year is None and year < actual_year or (int(year) + 1 == actual_year):
+            conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+            cursor_pg = conn_pg.cursor()
             for catalog in catalog_list:
-                conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-                cursor_pg = conn_pg.cursor()
-                cursor_pg.execute(f"""SELECT                                        
+                cursor_pg.execute(f"""
+                                  SELECT
+                                    ROUND(SUM(sub.TOTAL_IMPORTE),2) AS TOTAL_IMPORTE,
+                                    ROUND(SUM(sub.TOTAL_UTILIDAD),2) AS TOTAL_UTILIDAD,
+                                    ROUND(SUM(sub.UNIDADES_VENDIDAS),2) AS UNIDADES_VENDIDAS
+                                    FROM (SELECT                                        
                                         ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
                                         ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
                                         ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
@@ -426,19 +434,13 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
                                         li.NOMBRE,
                                         sl.NOMBRE,
                                         EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA))
-                                    ORDER BY
-                                        TOTAL_IMPORTE DESC;""", (year, tuple(catalog[1].split(', '))))
-                rows = cursor_pg.fetchall()
-                cursor_pg.close()
-                conn_pg.close()
+                                  ) sub ;""", (year, tuple(catalog[1].split(', '))))
+                rows = cursor_pg.fetchone()
 
-                conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-                cursor = conn.cursor()                   
-
-                for row in rows:                                        
-                    total_amount = row[0]
-                    profit = row[1]
-                    units_sold = row[2]
+                if rows is not None:                                       
+                    total_amount = rows[0]
+                    profit = rows[1]
+                    units_sold = rows[2]
                     
                     # Verificar si ya existe un registro con estos valores en product_abc
                     cursor.execute(f"""
@@ -460,11 +462,18 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
                         print("UPDATE al registro existente en product_abc")
                         print("Catalogo: ", catalog[0])
                         conn.commit()
+            cursor_pg.close()
+            conn_pg.close() 
         elif year == actual_year:
+            conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+            cursor_pg = conn_pg.cursor()
             for catalog in catalog_list:
-                conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-                cursor_pg = conn_pg.cursor()
-                cursor_pg.execute(f"""SELECT
+                cursor_pg.execute(f"""
+                                  SELECT
+                                    ROUND(SUM(sub.TOTAL_IMPORTE),2) AS TOTAL_IMPORTE,
+                                    ROUND(SUM(sub.TOTAL_UTILIDAD),2) AS TOTAL_UTILIDAD,
+                                    ROUND(SUM(sub.UNIDADES_VENDIDAS),2) AS UNIDADES_VENDIDAS
+                                  FROM (SELECT
                                         ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
                                         ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
                                         ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
@@ -490,16 +499,13 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
                                         li.NOMBRE,
                                         sl.NOMBRE,
                                         EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA))
-                                    ORDER BY
-                                        TOTAL_IMPORTE DESC;""", (year, tuple(catalog[1].split(', '))))
-                rows = cursor_pg.fetchall()
-                cursor_pg.close()
-                conn_pg.close()
+                                  ) sub;""", (year, tuple(catalog[1].split(', '))))
+                rows = cursor_pg.fetchone()
 
-                for row in rows:                    
-                    total_amount = row[0]
-                    profit = row[1]
-                    units_sold = row[2]
+                if rows is not None:                    
+                    total_amount = rows[0]
+                    profit = rows[1]
+                    units_sold = rows[2]
 
                     # Verificar si ya existe un registro con estos valores
                     cursor.execute(f"""
@@ -517,9 +523,11 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
                         # Actualizar registro existente
                         cursor.execute(f"""UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
                                             WHERE catalog_id = %s AND year = %s AND assigned_company = %s""", (total_amount, profit, units_sold, catalog[0], year, enterprise))
+                        conn.commit()
+            cursor_pg.close()
+            conn_pg.close()
         else:
             pass                 
-        conn.commit()
         cursor.close()
         conn.close()        
         return True
@@ -531,10 +539,15 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
         print(f"Error: {e}")
         return False
     finally:
-        if conn:
-            conn.close()
         if cursor:
             cursor.close()
+        if cursor_pg:
+            cursor_pg.close()
+        if conn:
+            conn.close()
+        if conn_pg:
+            conn_pg.close()
+
 
 async def upsert_product_abc_part2(year):
     try:
