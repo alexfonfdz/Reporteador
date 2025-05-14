@@ -559,15 +559,24 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
         row = cursor.fetchone()
         if row is not None and row[0] is not None:
             last_month_update = row[0].month
-        if year < actual_year or (year+1 == actual_year and last_month_update < 6):
+        if int(year) < actual_year or (int(year) +1 == actual_year and last_month_update < 6):
             cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND (inventory_close_u IS NULL OR inventory_close_p IS NULL) AND assigned_company = %s", (year, enterprise))
             rows = cursor.fetchall()
 
             for row in rows:
                 row_catalog_id = row[1]
-                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s) AND assigned_company = %s", (row_catalog_id, year, row_catalog_id, year, enterprise))
+                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND add_year <= %s AND add_year = (SELECT MAX(add_year) FROM product_catalog WHERE catalog_id = %s AND add_year <= %s)", (row_catalog_id, year, row_catalog_id, year))
                 rows2 = cursor.fetchall()
-                product_tuple = tuple([r[0] for r in rows2])
+                rows2_tuple = tuple([r[0] for r in rows2])                
+
+                product_tuple = None;
+                
+                if rows2_tuple:                                                            
+                    cursor.execute(f"SELECT code FROM product WHERE id IN %s", (rows2_tuple))                                        
+                    rows3 = cursor.fetchall()
+
+                    product_tuple = tuple([r[0] for r in rows3])                                        
+
                 if product_tuple:
                     conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
                     cursor_pg = conn_pg.cursor()
@@ -603,6 +612,7 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
                     cursor_pg.close()
                     conn_pg.close()
                     for row3 in rows3:
+                        print("Catalogo: ", row_catalog_id)                        
                         cursor.execute(f"UPDATE product_abc SET inventory_close_u = %s, inventory_close_p = %s WHERE id = %s", (row3[0], row3[1], row[0]))
             conn.commit()
             cursor.close()
@@ -614,7 +624,7 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
 
             for row in rows:
                 row_catalog_id = row[1]
-                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s) AND assigned_company = %s", (row_catalog_id, year, row_catalog_id, year, enterprise))
+                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND add_year <= %s AND add_year = (SELECT MAX(add_year) FROM product_catalog WHERE catalog_id = %s AND add_year <= %s)", (row_catalog_id, year, row_catalog_id, year))
                 rows2 = cursor.fetchall()
                 product_tuple = tuple([r[0] for r in rows2])
                 if product_tuple:
@@ -661,19 +671,15 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
             conn.commit()
             cursor.close()
             conn.close()
-            return True
-    except Exception as e:
+            return True    
+    except Exception as e:        
         print(f"Error: {e}")
         return False
     finally:
         if cursor:
-            cursor.close()
-        if cursor_pg:
-            cursor_pg.close()
+            cursor.close()        
         if conn:
-            conn.close()
-        if conn_pg:
-            conn_pg.close()
+            conn.close()        
 
 
 async def upsert_product_abc_part3(year):
@@ -1182,8 +1188,8 @@ async def upsert_all(year, enterprise):
         await upsert_product_abc_part0(year, enterprise)
         catalog_list = await get_product_catalogs(year)        
         if catalog_list:               
-                await upsert_product_abc_part1(catalog_list, year, enterprise)        
-        #        await upsert_product_abc_part2(year)
+                #await upsert_product_abc_part1(catalog_list, year, enterprise)        
+                await upsert_product_abc_part2(year, enterprise)
         #         await upsert_product_abc_part3(year)
         #         await upsert_product_abc_part4(year)
         #         await upsert_product_abc_part5(year)
