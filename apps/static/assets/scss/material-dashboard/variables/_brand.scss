@@ -3,10 +3,13 @@
 
 /*     brand Colors              */
 
-$brand-primary:              $purple-500 !default;
-$brand-info:                 $cyan-500 !default;
-$brand-success:              $green-500 !default;
-$brand-warning:              $orange-500 !default;
-$brand-danger:               $red-500 !default;
-$brand-rose:                 $pink-500 !default;
-$brand-inverse:              $black-color !default;
+$brand-primary: $blue-500 !default;
+$brand-secondary: $orange-800 !default;
+
+$primary-gradient: linear-gradient(60deg, $blue-800, $blue-300);
+$brand-info: $cyan-500 !default;
+$brand-success: $green-500 !default;
+$brand-warning: $orange-500 !default;
+$brand-danger: $red-500 !default;
+$brand-rose: $pink-500 !default;
+$brand-inverse: $black-color !default;
