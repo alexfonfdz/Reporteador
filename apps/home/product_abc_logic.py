@@ -549,23 +549,23 @@ async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
             conn_pg.close()
 
 
-async def upsert_product_abc_part2(year):
+async def upsert_product_abc_part2(year, enterprise = "marw"):
     try:
         actual_year = datetime.datetime.now().year
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
         last_month_update = 0
-        cursor.execute("SELECT MAX(last_update) FROM product_abc WHERE year = %s", (year,))
+        cursor.execute("SELECT MAX(last_update) FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
         row = cursor.fetchone()
         if row is not None and row[0] is not None:
             last_month_update = row[0].month
         if year < actual_year or (year+1 == actual_year and last_month_update < 6):
-            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND (inventory_close_u IS NULL OR inventory_close_p IS NULL)", (year,))
+            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND (inventory_close_u IS NULL OR inventory_close_p IS NULL) AND assigned_company = %s", (year, enterprise))
             rows = cursor.fetchall()
 
             for row in rows:
                 row_catalog_id = row[1]
-                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s)", (row_catalog_id, year, row_catalog_id, year))
+                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s) AND assigned_company = %s", (row_catalog_id, year, row_catalog_id, year, enterprise))
                 rows2 = cursor.fetchall()
                 product_tuple = tuple([r[0] for r in rows2])
                 if product_tuple:
@@ -609,12 +609,12 @@ async def upsert_product_abc_part2(year):
             conn.close()
             return True
         elif year == actual_year:
-            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s", (year,))
+            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
             rows = cursor.fetchall()
 
             for row in rows:
                 row_catalog_id = row[1]
-                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s)", (row_catalog_id, year, row_catalog_id, year))
+                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND year <= %s AND year = (SELECT MAX(year) FROM product_catalog WHERE catalog_id = %s AND year <= %s) AND assigned_company = %s", (row_catalog_id, year, row_catalog_id, year, enterprise))
                 rows2 = cursor.fetchall()
                 product_tuple = tuple([r[0] for r in rows2])
                 if product_tuple:
@@ -646,10 +646,10 @@ async def upsert_product_abc_part2(year):
                     cursor_pg.close()
                     conn_pg.close()
                     for row3 in rows3:
-                        cursor.execute(f"SELECT id FROM product_abc WHERE catalog_id = %s AND year = %s", (row_catalog_id, year))
+                        cursor.execute(f"SELECT id FROM product_abc WHERE catalog_id = %s AND year = %s AND assigned_company = %s", (row_catalog_id, year, enterprise))
                         row2 = cursor.fetchone()
                         if row2 is None:
-                            cursor.execute(f"INSERT INTO product_abc (catalog_id, inventory_close_u, inventory_close_p) VALUES (%s, %s, %s)", (row_catalog_id, row3[0], row3[1]))
+                            cursor.execute(f"INSERT INTO product_abc (catalog_id, inventory_close_u, inventory_close_p, year, enterprise) VALUES (%s, %s, %s, %s, %s)", (row_catalog_id, row3[0], row3[1], year, enterprise))
                         else:
                             cursor.execute(f"UPDATE product_abc SET inventory_close_u = %s, inventory_close_p = %s WHERE id = %s", (row3[0], row3[1], row2[0]))
             conn.commit()
@@ -666,10 +666,15 @@ async def upsert_product_abc_part2(year):
         print(f"Error: {e}")
         return False
     finally:
-        if conn:
-            conn.close()
         if cursor:
             cursor.close()
+        if cursor_pg:
+            cursor_pg.close()
+        if conn:
+            conn.close()
+        if conn_pg:
+            conn_pg.close()
+
 
 async def upsert_product_abc_part3(year):
     try:
