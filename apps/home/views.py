@@ -7,6 +7,7 @@ from django import template
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, HttpResponseRedirect
 from django.template import loader
+from django.test.testcases import asyncio
 from django.urls import reverse
 from django.http import JsonResponse
 from django.core.paginator import Paginator
@@ -18,7 +19,10 @@ import mysql.connector as m
 import json
 import asyncio
 import psycopg2 as p
+
 import pandas as pd
+
+
 
 
 @login_required(login_url="/login/")
@@ -298,6 +302,7 @@ def get_almacen_data(request):
     return JsonResponse(data, safe=False)
 
 
+
 # ==================================================================================================== # 
 @csrf_exempt
 def get_families_from_admintotal(request):
@@ -524,3 +529,5 @@ def insert_data_to_product_abc(request):
         return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_abc.'}, status=200)
     except Exception as e:
         return JsonResponse({'error': f'Error al insertar la información en product_abc: {e}'}, status=500)
+
+
