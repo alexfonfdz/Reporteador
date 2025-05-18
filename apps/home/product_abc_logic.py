@@ -1,8 +1,10 @@
+from django.test.testcases import asyncio
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD
 import psycopg2 as p
 import mysql.connector as m
 import datetime
 import pandas as pd
+import aiomysql as aiom
 
 """
   La función 'upsert_families' realiza una sincronización de datos entre dos bases de 
@@ -32,6 +34,7 @@ async def upsert_families():
         for row in rows:
             if row[0] not in [r[1] for r in rows2]:
                 cursor.execute(f"INSERT INTO family (name, id_admin) VALUES (%s, %s)", (row[0], row[1],))
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -108,7 +111,11 @@ async def upsert_subfamilies():
     5. Se imprime un mensaje indicando que los productos han sido insertados correctamente.
 """
 async def upsert_products():
+    conn = cursor = None
     try:
+
+        
+
         conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
         cursor = conn.cursor()
         cursor.execute(f"""
@@ -116,23 +123,51 @@ async def upsert_products():
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea as sl ON p.sublinea_id = sl.id 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_linea as l ON p.linea_id = l.id
                        """)
-        rows = cursor.fetchall()
+        new_rows = cursor.fetchall()
         cursor.close()
         conn.close()
+
+        async def upsert_job(new_rows: list, existent_rows: set):
+            conn = await aiom.connect(
+                db=ENV_MYSQL_NAME,
+                user=ENV_MYSQL_USER,
+                password=ENV_MYSQL_PASSWORD or "",
+                host=ENV_MYSQL_HOST or "",
+                port=int(ENV_MYSQL_PORT or "3306"),
+            )
+
+            async with conn.cursor() as cursor:
+                for row in new_rows:            
+                    if row[1] not in existent_rows:                                
+                        await cursor.execute(f"INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES (%s, %s, %s, (SELECT id FROM family WHERE id_admin = %s), (SELECT id FROM subfamily WHERE id_admin = %s))", (row[0], row[1], row[2], row[7], row[6]))
+                    elif row[5] == True:
+                        await cursor.execute(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
+
         
+
+                await conn.commit()
+                conn.close()
+
         conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
         cursor = conn.cursor()
         cursor.execute("SELECT id, code FROM product")
-        rows2 = cursor.fetchall()        
-        for row in rows:            
-            if row[1] not in [r[1] for r in rows2]:                                
-                cursor.execute(f"INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES (%s, %s, %s, (SELECT id FROM family WHERE id_admin = %s), (SELECT id FROM subfamily WHERE id_admin = %s))", (row[0], row[1], row[2], row[7], row[6]))
-            elif row[5] == True:
-                print(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
-                cursor.execute(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        existent_rows = set(r[1] for r in cursor.fetchall())
+
+        page_content = 100
+        pages_amount = len(new_rows) // page_content
+        remainder = len(new_rows) % page_content
+
+        async with asyncio.TaskGroup() as tg:
+            for i in range(pages_amount):
+                tg.create_task(
+                    upsert_job(new_rows[i*page_content:(i+1)*page_content], existent_rows)
+                )
+
+            if remainder:
+                tg.create_task(
+                    upsert_job(new_rows[pages_amount*page_content:], existent_rows)
+                )
+
 
         print("Productos insertados correctamente")
         return True
@@ -144,7 +179,6 @@ async def upsert_products():
             conn.close()
         if cursor:
             cursor.close()
-
 """
   La función 'upsert_catalogs' realiza la inserción de un nuevo catálogo en la base de datos MySQL.
 
