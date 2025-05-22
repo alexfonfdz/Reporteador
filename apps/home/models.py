@@ -50,7 +50,7 @@ class Product(models.Model):
 class Catalog(models.Model):
     family = models.CharField(max_length=100, unique=False, blank=True, null=True)
     subfamily = models.CharField(max_length=100, unique=False, blank=True, null=True)    
-    description = models.TextField()    
+    description = models.CharField(max_length=191, unique=False, blank=False, null=False)    
 
     def __str__(self):
         return self.description
@@ -59,6 +59,12 @@ class Catalog(models.Model):
         db_table = "catalog"
         verbose_name = "Catalog"
         verbose_name_plural = "Catalogs"
+        indexes = [
+            models.Index(
+                name="description",
+                fields=["description"]
+            )
+        ]
 
 class ProductCatalog(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='catalogs')

@@ -180,7 +180,7 @@ async def upsert_products():
         if cursor:
             cursor.close()
 """
-  La función 'upsert_catalogs' realiza la inserción de un nuevo catálogo en la base de datos MySQL.
+  La función 'upsert_catalogs' realiza la inserción de un nuevo conjunto de catálogos en la base de datos MySQL.
 
     1. Verifica si la descripción proporcionada es valida (no nula, no vacía y no contiene valores
        no deseados como 'N/A' o '0').
@@ -188,45 +188,55 @@ async def upsert_products():
         - Si no existe, se inserta un nuevo registro.        
     3. Se cierra la conexión a la base de datos.    
 """
-async def upsert_catalogs(description):
+async def upsert_catalogs(catalogs):
+    conn =  cursor = None
     try:                
-        print(f"Catalogo: {description}")
 
-        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor()
+        conn = await aiom.connect(
+            host=ENV_MYSQL_HOST or "localhost",
+            user=ENV_MYSQL_USER or "user",
+            password=ENV_MYSQL_PASSWORD or "password",
+            db=ENV_MYSQL_NAME or "dbname",
+            port=int(ENV_MYSQL_PORT or "3306")
+        )
 
-        # Verificar si la descripción es válida
-        if description[0] not in ['N/A', '0', 0, None, ''] and description[1] not in ['N/A', '0', 0, None, ''] and description[2] not in ['N/A', '0', 0, None, '']:
+        invalid_catalog = ['N/A', '0', 0, None, '', ' ']
 
-            # Verificar si ya existe un catálogo con la misma descripción
-            cursor.execute("SELECT id FROM catalog WHERE description = %s", (description[0],))
-            row = cursor.fetchone()                                    
+        async with conn.cursor() as cursor:
+            for catalog in catalogs:
+            # Verificar si la descripción es válida
+                if catalog[0] in invalid_catalog and catalog[1] in invalid_catalog and catalog[2] in invalid_catalog:
+                    raise ValueError("El formato de la descripcion no es valido")
 
-            if pd.isna(description[1]):                
-                description[1] = None
-            
-            if pd.isna(description[2]):
-                description[2] = None
-            
-            # Si no existe, insertar un nuevo catálogo
-            if row is None:
-                cursor.execute(
-                       "INSERT INTO catalog (description, family, subfamily) VALUES (%s, %s, %s)",
-                        (description[0], description[1], description[2],)
+                if pd.isna(catalog[1]):                
+                    catalog[1] = None
+        
+                if pd.isna(catalog[2]):
+                    catalog[2] = None
+
+
+                await cursor.execute(
+                    "SELECT id FROM catalog WHERE description = %s",
+                    catalog[0]
                 )
-        else:
-            raise ValueError("El formato de la descripcion no es valido")
+
+                existing_row = await cursor.fetchone()
+
+                if existing_row:
+                    continue
+
+                await cursor.execute(
+                    "INSERT INTO catalog (description, family, subfamily) VALUES (%s, %s, %s)",
+                    (catalog[0], catalog[1], catalog[2],)
+                )
                                                     
-        conn.commit()
-        cursor.close()
-        conn.close() 
+            await conn.commit()
+            await cursor.close()
+
+
     except Exception as e:
         print(f"Error: {e}")        
-    finally:
-        if conn:
-            conn.close()
-        if cursor:
-            cursor.close()
+
 
 """
   La función 'upsert_product_catalogs' realiza la inserción o actualización de registros 

@@ -63,7 +63,24 @@ class InsertDataTestCase(TestCase):
 
         print(f'Took {difference.total_seconds()} seconds to insert products')
 
+    def test_insert_catalog(self):
+        start = datetime.now()
+        response = self.c.post('/get_catalogs_from_admintotal')
+        end = datetime.now()
 
+        difference = end - start
+        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
 
+        cursor = conn.cursor()
 
+        cursor.execute("SELECT Count(*) FROM catalog")
+        catalog_insertion = cursor.fetchall()
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        print(f'catalog insertions {catalog_insertion}')
+
+        print(f'Took {difference.total_seconds()} seconds to insert catalog')
 

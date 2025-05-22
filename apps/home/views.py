@@ -13,12 +13,16 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
+from pandas.core.accessor import delegate_names
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT
+from django.conf import settings
+import os
 from .product_abc_logic import upsert_families, upsert_subfamilies, upsert_products, upsert_catalogs, upsert_product_catalogs, upsert_all
 import mysql.connector as m
 import json
 import asyncio
 import psycopg2 as p
+from os import path
 
 import pandas as pd
 
@@ -338,21 +342,29 @@ def read_and_filter_excel(file_path, output_filtered_file):
         pd.DataFrame: DataFrame filtrado.
     """
     try:
+        catalogo_key = "Catalogo"
+
         # Leer el archivo Excel
         df = pd.read_excel(file_path)
 
+        df = df.rename(columns={
+            "Descripción 2": "Catalogo", 
+            "Línea": "Familia",
+            "Sublínea": "Subfamilia"
+        })
+
         # Validar que las columnas necesarias existan
-        if "Catalogo" not in df.columns:
-            raise ValueError("La columna 'Catalogo' no existe en el archivo Excel.")
+        if catalogo_key not in df.columns:
+            raise ValueError(f"La columna {catalogo_key} no existe en el archivo Excel.")
 
         # Reemplazar valores NaN con "0"        
-        df['Catalogo'] = df['Catalogo'].fillna('0')
+        df[catalogo_key] = df[catalogo_key].fillna('0')
 
         # Convertir valores a cadenas y eliminar espacios
-        df["Catalogo"] = df["Catalogo"].astype(str).str.strip()
+        df[catalogo_key] = df[catalogo_key].astype(str).str.strip()
 
         # Filtrar filas donde "Catalogo" no sea válido
-        df = df[~df["Catalogo"].isin(["0", ""])]
+        df = df[~df[catalogo_key].isin(["0", ""])]
 
         # Guardar el DataFrame filtrado en un archivo Excel
         df.to_excel(output_filtered_file, index=False)
@@ -375,23 +387,27 @@ def process_and_update_categories(file_path, output_file):
         pd.DataFrame: DataFrame con las categorías actualizadas.
     """
     try:
+        catalogo_key = "Catalogo"
+        subfamilia_key = "Subfamilia"
+
         # Leer el archivo Excel
         df = pd.read_excel(file_path)
 
         # Validar que las columnas necesarias existan
-        if "Subfamilia" not in df.columns or "Catalogo" not in df.columns:
-            raise ValueError("Las columnas 'Subfamilia' y 'Catalogo' deben existir en el archivo Excel.")
+        if subfamilia_key not in df.columns or catalogo_key not in df.columns:
+            raise ValueError(f"Las columnas {subfamilia_key} y {catalogo_key} deben existir en el archivo Excel.")
+
 
         # Agrupar por "Catalogo" y contar las subfamilias únicas
-        category_group = df.groupby("Catalogo")["Subfamilia"].nunique()
+        category_group = df.groupby(catalogo_key)[subfamilia_key].nunique()
 
         # Aplicar la lógica para actualizar las categorías
         def update_category(row):
-            if category_group[row["Catalogo"]] > 1:
-                return f"{row['Catalogo']} {row['Subfamilia']}"
-            return row["Catalogo"]
+            if category_group[row[catalogo_key]] > 1:
+                return f"{row[catalogo_key]} {row[subfamilia_key]}"
+            return row[catalogo_key]
 
-        df["Catalogo"] = df.apply(update_category, axis=1)
+        df[catalogo_key] = df.apply(update_category, axis=1)
 
         # Guardar el DataFrame actualizado en un nuevo archivo Excel
         df.to_excel(output_file, index=False)
@@ -415,15 +431,47 @@ def get_catalogs_from_admintotal(request):
     """
     try:
         # Rutas de los archivos
-        file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx'
-        output_filtered_file = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Filtrado.xlsx'
-        output_file = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx'
+        # Use absolute paths with Django's STATICFILES_DIRS setting
+        static_data_dir = os.path.join('.', 'apps', 'static', 'data')
+        
+        # Check if the static data directory exists
+        if not os.path.exists(static_data_dir):
+            os.makedirs(static_data_dir, exist_ok=True)
+           
+        file_path = os.path.join(static_data_dir, 'Catalogo.para.agrupaciones.MARW.xlsx')
+        output_filtered_file = os.path.join(static_data_dir, 'Catalogo.para.agrupaciones.MARW-Filtrado.xlsx')
+        output_file = os.path.join(static_data_dir, 'Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx')
+        
+        if not os.path.exists(file_path):
+            # Try alternate path approaches
+            alt_path = os.path.abspath('./apps/static/data/Catalogo.para.agrupaciones.MARW.xlsx')
+            print(f"Trying alternate path: {alt_path}")
+            if os.path.exists(alt_path):
+                print(f"File exists at alternate path")
+                file_path = alt_path
+            else:
+                raise FileNotFoundError(f"The file {file_path} does not exist. Also tried {alt_path}")
+
 
         # Leer y filtrar el archivo Excel
-        read_and_filter_excel(file_path, output_filtered_file)
+        try:
+            read_and_filter_excel(file_path, output_filtered_file)
+        except Exception as excel_read_error:
+            # If pandas error contains specific details, print them
+            if hasattr(excel_read_error, 'args') and len(excel_read_error.args) > 0:
+                print(f"Pandas error details: {excel_read_error.args[0]}")
+            raise
+
 
         # Agrupar los catálogos y guardar en un archivo Excel
-        process_and_update_categories(file_path, output_file)
+
+        try:
+
+            process_and_update_categories(output_filtered_file, output_file)
+
+        except Exception as processingException:
+            print(f"Exception while processing the dataframe: {processingException}")
+
 
         # Leer el archivo resultante y extraer los catálogos
         df_updated = pd.read_excel(output_file)
@@ -444,17 +492,45 @@ def get_catalogs_from_admintotal(request):
         # Obtener los catálogos únicos
         catalogos = df_updated.drop_duplicates().values.tolist()
 
+        async def delegate_upsertion():
+            chunk_size = 500
+            complete_chunks_amount = len(catalogos) // chunk_size
+            remainder = len(catalogos) % chunk_size
+
+            async with asyncio.TaskGroup() as tg:
+                for i in range(complete_chunks_amount):
+                    tg.create_task(
+                        upsert_catalogs(catalogos[i*chunk_size:(i+1)*chunk_size])
+                    )
+
+                if remainder:
+                    tg.create_task(
+                        upsert_catalogs(catalogos[complete_chunks_amount * chunk_size:])
+                    )
+
+
         # Insertar los catálogos en la base de datos uno por uno
-        for catalogo in catalogos:
-            asyncio.run(upsert_catalogs(catalogo))
+
+        asyncio.run(delegate_upsertion())
 
         return JsonResponse({'msg': "Se han guardado los archivos filtrados, agrupados e insertado los catálogos satisfactoriamente"}, safe=False)
     except ValueError as ve:
         return JsonResponse({'error': str(ve)}, status=400)
+    except FileNotFoundError as fnf:
+        return JsonResponse({
+            'error': str(fnf),
+            'details': 'File not found error - check if the file exists at the specified path.',
+        }, status=404)
     except RuntimeError as re:
         return JsonResponse({'error': str(re)}, status=500)
     except Exception as e:
-        return JsonResponse({'error': f"Error inesperado: {e}"}, status=500)
+        import traceback
+        stack_trace = traceback.format_exc()
+        return JsonResponse({
+            'error': f"Error inesperado: {e}",
+            'stack_trace': stack_trace,
+            'error_type': str(type(e))
+        }, status=500)
     
 @csrf_exempt
 def insert_product_catalog(request):
@@ -471,7 +547,12 @@ def insert_product_catalog(request):
             return JsonResponse({'error': 'El parámetro "year" es obligatorio.'}, status=400)
 
         # Leer el archivo Excel
-        file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx'
+        static_data_dir = os.path.join('.', 'apps', 'static', 'data')
+        file_path = os.path.join(static_data_dir, 'Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx')
+        
+        # Check if the file exists
+        if not os.path.exists(file_path):
+            return JsonResponse({'error': f'The file {file_path} does not exist.'}, status=404)
         df = pd.read_excel(file_path)
 
         # Imprimir las columnas para depuración
