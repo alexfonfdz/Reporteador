@@ -1184,12 +1184,13 @@ async def upsert_product_abc_part7(year):
             cursor.close()
 
 async def upsert_all(year, enterprise):
+    
     try:
         await upsert_product_abc_part0(year, enterprise)
-        catalog_list = await get_product_catalogs(year)        
-        if catalog_list:               
-                #await upsert_product_abc_part1(catalog_list, year, enterprise)        
-                await upsert_product_abc_part2(year, enterprise)
+        # catalog_list = await get_product_catalogs(year)        
+        # if catalog_list:               
+        #         await upsert_product_abc_part1(catalog_list, year, enterprise)        
+        #         await upsert_product_abc_part2(year, enterprise)
         #         await upsert_product_abc_part3(year)
         #         await upsert_product_abc_part4(year)
         #         await upsert_product_abc_part5(year)

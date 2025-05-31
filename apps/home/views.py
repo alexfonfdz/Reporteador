@@ -524,3 +524,131 @@ def insert_data_to_product_abc(request):
         return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_abc.'}, status=200)
     except Exception as e:
         return JsonResponse({'error': f'Error al insertar la información en product_abc: {e}'}, status=500)
+
+
+#--------------------------------#
+
+@csrf_exempt
+def insert_product_catalog(request):
+    """
+    Endpoint para insertar o actualizar la información en catalog, product_catalog y ProductABC,
+    cumpliendo los requerimientos indicados.
+    """
+
+    def to_latin1(value):
+        if isinstance(value, str):
+            return value.encode('latin1', errors='ignore').decode('latin1')
+        return value
+
+    try:
+        data = json.loads(request.body)
+        year = data.get('year')
+        empresa = data.get('empresa')
+
+        if not year:
+            return JsonResponse({'error': 'El parámetro "year" es obligatorio.'}, status=400)
+        if not empresa:
+            return JsonResponse({'error': 'El parámetro "empresa" es obligatorio.'}, status=400)
+
+        # Leer Excel
+        file_path = 'apps/static/data/Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx'
+        df = pd.read_excel(file_path)
+
+        # Validar columnas mínimas
+        required_cols = {"Catalogo", "Codigo", "Familia", "Subfamilia", "Descripcion 2"}
+        missing_cols = required_cols - set(df.columns)
+        if missing_cols:
+            return JsonResponse({'error': f'Faltan columnas en Excel: {missing_cols}'}, status=400)
+
+        # Conexión a la base de datos
+        conn = m.connect(
+            host=ENV_MYSQL_HOST,
+            user=ENV_MYSQL_USER,
+            password=ENV_MYSQL_PASSWORD,
+            database=ENV_MYSQL_NAME,
+            port=ENV_MYSQL_PORT
+        )
+        cursor = conn.cursor()
+
+        now = datetime.now()
+
+        # Función para insertar o actualizar en product_catalog
+        def upsert_product_catalog(product_id, catalog_id, descripcion_corta, year, empresa):
+            # Verificar si ya existe el registro
+            sql_check = """
+                SELECT id FROM product_catalog 
+                WHERE product_id = %s AND catalog_id = %s AND empresa = %s AND year = %s
+            """
+            cursor.execute(sql_check, (product_id, catalog_id, empresa, year))
+            exist = cursor.fetchone()
+            if exist:
+                # Update (ejemplo: actualizamos descripción y fecha actualización)
+                sql_update = """
+                    UPDATE product_catalog
+                    SET descripcion_corta = %s, last_update = %s
+                    WHERE id = %s
+                """
+                cursor.execute(sql_update, (descripcion_corta, now, exist[0]))
+            else:
+                # Insert
+                sql_insert = """
+                    INSERT INTO product_catalog (product_id, catalog_id, descripcion_corta, year, empresa, last_update)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(sql_insert, (product_id, catalog_id, descripcion_corta, year, empresa, now))
+
+        # Recorrer filas del Excel
+        for _, row in df.iterrows():
+            catalog_description = to_latin1(row["Catalogo"])
+            product_code = to_latin1(row["Codigo"])
+            familia = to_latin1(row["Familia"])
+            subfamilia = to_latin1(row["Subfamilia"])
+            descripcion_corta = to_latin1(row["Descripcion 2"])
+
+            # Buscar producto y validar empresa
+            cursor.execute("SELECT id FROM product WHERE code = %s AND empresa = %s", (product_code, empresa))
+            product_res = cursor.fetchone()
+            if not product_res:
+                # Producto no encontrado, continuar
+                continue
+            product_id = product_res[0]
+
+            # Buscar o insertar catálogo con familia y subfamilia
+            cursor.execute("SELECT id FROM catalog WHERE description = %s", (catalog_description,))
+            catalog_res = cursor.fetchone()
+            if catalog_res:
+                catalog_id = catalog_res[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO catalog (description, familia, subfamilia) VALUES (%s, %s, %s)",
+                    (catalog_description, familia, subfamilia)
+                )
+                conn.commit()
+                catalog_id = cursor.lastrowid
+
+            # Validar actualizar ProductABC según fecha last_update
+            cursor.execute("SELECT last_update FROM ProductABC WHERE product_code = %s AND empresa = %s", (product_code, empresa))
+            prodabc_res = cursor.fetchone()
+            if prodabc_res and prodabc_res[0]:
+                last_update = prodabc_res[0]
+                # No actualizar si last_update es 1 año o más después que el year
+                if last_update.year >= year + 1:
+                    continue
+
+            # Insertar/actualizar en product_catalog
+            upsert_product_catalog(product_id, catalog_id, descripcion_corta, year, empresa)
+
+        # Confirmar todos los cambios
+        conn.commit()
+
+        cursor.close()
+        conn.close()
+
+        return JsonResponse({'msg': 'Los registros se han procesado correctamente.'}, status=200)
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'El cuerpo de la solicitud debe ser un JSON válido.'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Error durante la operación: {str(e)}'}, status=500)
+
+##-------------------------##
