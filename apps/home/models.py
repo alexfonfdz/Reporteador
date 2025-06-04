@@ -149,7 +149,7 @@ class ProductABC(models.Model):
 
     assigned_company = models.CharField(max_length=100, null=True, blank=True)
     year = models.IntegerField()
-    last_update = models.DateTimeField(default=timezone.now, blank=True)
+    last_update = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "product_abc"

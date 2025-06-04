@@ -29,14 +29,8 @@ urlpatterns = [
     path('insert_product_catalog', views.insert_product_catalog, name='insert_product_catalog'),
     
     
-  ##----------------------------##
     
     
-    path('api/cargar-catalogos-productos/', views.insert_product_catalog, name='cargar_catalogos_productos'),
-
-
-  ##----------------------------##
-
     path('insert_data_to_product_abc', views.insert_data_to_product_abc, name='insert_data_to_product_abc'),
 
     # Matches any html file
