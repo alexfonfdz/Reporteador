@@ -164,3 +164,6 @@ class ProductABC(models.Model):
         db_table = "product_abc"
         verbose_name = "Product ABC"
         verbose_name_plural = "Products ABC"
+        constraints = [
+            models.UniqueConstraint(fields=['catalog_id', 'year', 'assigned_company'], name='catalog_year_company_idx')
+        ]
