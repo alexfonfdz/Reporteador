@@ -79,7 +79,10 @@ class ProductCatalog(models.Model):
         db_table = "product_catalog"
         verbose_name = "Product Catalog"
         verbose_name_plural = "Product Catalogs"
-
+        constraints = [
+            models.UniqueConstraint(fields=['product_id', 'add_year'], name='product_year_idx')
+        ]
+        
 class ProductABC(models.Model):
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_products')    
     

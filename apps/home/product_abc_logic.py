@@ -1,3 +1,4 @@
+from django.conf import traceback
 from django.test.testcases import asyncio
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD
 import psycopg2 as p
@@ -5,6 +6,7 @@ import mysql.connector as m
 import datetime
 import pandas as pd
 import aiomysql as aiom
+import asyncpg as aiop
 
 """
   La función 'upsert_families' realiza una sincronización de datos entre dos bases de 
@@ -43,6 +45,7 @@ async def upsert_families():
         return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -86,6 +89,7 @@ async def upsert_subfamilies():
         return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -111,74 +115,86 @@ async def upsert_subfamilies():
     5. Se imprime un mensaje indicando que los productos han sido insertados correctamente.
 """
 async def upsert_products():
-    conn = cursor = None
+    conn = cursor = conn_pg = cursor_pg = None
     try:
-
-        
-
-        conn = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-        cursor = conn.cursor()
-        cursor.execute(f"""
+        conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+        cursor_pg = conn_pg.cursor()
+        cursor_pg.execute(f"""
                        SELECT p.descripcion, p.codigo, p.id, sl.nombre, l.nombre, p.activo, p.sublinea_id, p.linea_id FROM {ENV_PSQL_DB_SCHEMA}.admintotal_producto as p 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_sublinea as sl ON p.sublinea_id = sl.id 
                        INNER JOIN {ENV_PSQL_DB_SCHEMA}.admintotal_linea as l ON p.linea_id = l.id
                        """)
-        new_rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        new_rows = cursor_pg.fetchall()
+        cursor_pg.close()
+        conn_pg.close()
 
-        async def upsert_job(new_rows: list, existent_rows: set):
-            conn = await aiom.connect(
-                db=ENV_MYSQL_NAME,
-                user=ENV_MYSQL_USER,
-                password=ENV_MYSQL_PASSWORD or "",
-                host=ENV_MYSQL_HOST or "",
-                port=int(ENV_MYSQL_PORT or "3306"),
-            )
+        conn = await aiom.connect(
+            db=ENV_MYSQL_NAME,
+            user=ENV_MYSQL_USER,
+            password=ENV_MYSQL_PASSWORD or "",
+            host=ENV_MYSQL_HOST or "",
+            port=int(ENV_MYSQL_PORT or "3306"),
+        )
 
-            async with conn.cursor() as cursor:
-                for row in new_rows:            
-                    if row[1] not in existent_rows:                                
-                        await cursor.execute(f"INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES (%s, %s, %s, (SELECT id FROM family WHERE id_admin = %s), (SELECT id FROM subfamily WHERE id_admin = %s))", (row[0], row[1], row[2], row[7], row[6]))
-                    elif row[5] == True:
-                        await cursor.execute(f"UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s", (row[0], row[7], row[6], row[1]))
+        async def upsert_job(conn, new_rows: list, existent_rows: set):
 
-        
+            cursor = await conn.cursor()
 
-                await conn.commit()
-                conn.close()
+            insert_query = "INSERT INTO product (description, code, id_admin, family_id, subfamily_id) VALUES (%s, %s, %s, (SELECT id FROM family WHERE id_admin = %s), (SELECT id FROM subfamily WHERE id_admin = %s))"
+            update_query = "UPDATE product SET description = %s, family_id = (SELECT id FROM family WHERE id_admin = %s), subfamily_id = (SELECT id FROM subfamily WHERE id_admin = %s) WHERE code = %s"
+            insert_query_params = []
+            update_query_params = []
 
-        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, code FROM product")
-        existent_rows = set(r[1] for r in cursor.fetchall())
+            for row in new_rows:
+                if row[1] not in existent_rows:                                
+                    insert_query_params.append((row[0], row[1], row[2], row[7], row[6]))
+                elif row[5] == True:
+                    update_query_params.append((row[0], row[7], row[6], row[1]))
+            try:
+                if len(insert_query_params) > 0:
+                    await cursor.executemany(insert_query, insert_query_params)
+                if len(update_query_params) > 0:
+                    await cursor.executemany(update_query, update_query_params)
+            except Exception as err:
+                print(f'Inserting product error:{err}')
 
-        page_content = 100
+
+                        
+            await cursor.close()
+
+
+        cursor = await conn.cursor()
+        await cursor.execute("SELECT id, code FROM product")
+        existent_rows = set(r[1] for r in await cursor.fetchall())
+
+        page_content = 500
         pages_amount = len(new_rows) // page_content
         remainder = len(new_rows) % page_content
 
-        async with asyncio.TaskGroup() as tg:
-            for i in range(pages_amount):
-                tg.create_task(
-                    upsert_job(new_rows[i*page_content:(i+1)*page_content], existent_rows)
-                )
+        for i in range(pages_amount):
+                await upsert_job(conn, new_rows[i*page_content:(i+1)*page_content], existent_rows)
 
-            if remainder:
-                tg.create_task(
-                    upsert_job(new_rows[pages_amount*page_content:], existent_rows)
-                )
+        if remainder:
+                await upsert_job(conn, new_rows[pages_amount*page_content:], existent_rows)
+
+        await conn.commit()
 
 
         print("Productos insertados correctamente")
         return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
-            conn.close()
+            await conn.close()
         if cursor:
-            cursor.close()
+            await cursor.close()
+        if conn_pg:
+            conn_pg.close()
+        if cursor_pg:
+            cursor_pg.close()
 """
   La función 'upsert_catalogs' realiza la inserción de un nuevo conjunto de catálogos en la base de datos MySQL.
 
@@ -236,6 +252,7 @@ async def upsert_catalogs(catalogs):
 
     except Exception as e:
         print(f"Error: {e}")        
+        print(traceback.print_exc())
 
 
 """
@@ -255,43 +272,36 @@ async def upsert_catalogs(catalogs):
           un nuevo registro en la tabla product_catalog.
     5. Se cierra la conexión a la base de datos.    
 """
-async def upsert_product_catalogs(product_code, catalog_description, year):
+async def upsert_product_catalogs(product_catalog, year):
+    conn = cursor = None
     try:
-        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
+        conn = m.connect(
+            host=ENV_MYSQL_HOST or "localhost",
+            user=ENV_MYSQL_USER or "user",
+            password=ENV_MYSQL_PASSWORD or "password",
+            database=ENV_MYSQL_NAME or "dbname",
+            port=int(ENV_MYSQL_PORT or "3306")
+        )
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM product WHERE code = %s", (product_code,))
-        product_id = cursor.fetchone()
-        if product_id is None:
-            print(f"Producto no encontrado: {product_code}")
-            return False
-        product_id = product_id[0]
+        queries_params = [(year, product['Codigo'], product['Catalogo']) for product in product_catalog]
+        query = """
+                    INSERT IGNORE INTO 
+                    product_catalog (product_id, catalog_id, add_year, last_update) 
+                        SELECT p.id, c.id, %s, NOW()
+                            FROM 
+                                product AS p JOIN catalog AS c ON 1=1
+                            WHERE
+                                p.code = %s AND c.description = %s
+                            LIMIT 1
+                """
 
-        cursor.execute("SELECT id FROM catalog WHERE description = %s", (catalog_description,))
-        catalog_id = cursor.fetchone()
-        if catalog_id is None:
-            print(f"Catálogo no encontrado: {catalog_description}")
-            return False
-        catalog_id = catalog_id[0]
+        cursor.executemany(query, queries_params)
 
-        cursor.execute("SELECT id, product_id, catalog_id, add_year FROM product_catalog WHERE product_id = %s", (product_id,))
-        row = cursor.fetchone()
-        if row is not None:
-            print(f"Registro encontrado en product_catalog: {row}")
-            if row[2] != catalog_id or row[3] == year:
-                print("Actualizando registro existente.")
-                cursor.execute("UPDATE product_catalog SET catalog_id = %s, last_update = NOW() WHERE product_id = %s AND add_year = %s", (catalog_id, product_id, year))
-            elif row[1] == product_id and row[2] == catalog_id and row[3] == year:
-                pass
-            else:
-                print("Insertando nuevo registro.")
-                cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year, last_update) VALUES (%s, %s, %s, NOW())", (product_id, catalog_id, year))
-        else:
-            print("Insertando nuevo registro porque no existe en product_catalog.")
-            cursor.execute("INSERT INTO product_catalog (product_id, catalog_id, add_year, last_update) VALUES (%s, %s, %s, NOW())", (product_id, catalog_id, year))
         conn.commit()
         return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -352,6 +362,7 @@ async def get_product_catalogs(year):
         return catalogs_list
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -405,12 +416,83 @@ async def upsert_product_abc_part0(year, enterprise="marw"):
         return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
             conn.close()
         if cursor:
             cursor.close()
+
+
+async def get_stats_from_pg_past_year_p1(catalog_list, year, conn_pg):
+    results = []
+    try:
+        params = [(year, catalog[1]) for catalog in catalog_list] 
+
+        query = f"""
+                                      SELECT
+                                        ROUND(SUM(sub.TOTAL_IMPORTE),2) AS TOTAL_IMPORTE,
+                                        ROUND(SUM(sub.TOTAL_UTILIDAD),2) AS TOTAL_UTILIDAD,
+                                        ROUND(SUM(sub.UNIDADES_VENDIDAS),2) AS UNIDADES_VENDIDAS
+                                        FROM (SELECT                                        
+                                            ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
+                                            ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
+                                            ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
+                                        FROM
+                                            MARW.ADMINTOTAL_MOVIMIENTODETALLE md
+                                            INNER JOIN MARW.ADMINTOTAL_MOVIMIENTO m ON md.MOVIMIENTO_ID = m.POLIZA_PTR_ID
+                                            INNER JOIN MARW.ADMINTOTAL_CLIENTE cl ON m.PROVEEDOR_ID = cl.ID
+                                            INNER JOIN MARW.UTILS_CONDICION cond ON cl.CONDICION_ID = cond.ID
+                                            INNER JOIN MARW.ADMINTOTAL_POLIZA pol ON m.POLIZA_PTR_ID = pol.ID
+                                            LEFT OUTER JOIN MARW.ADMINTOTAL_ALMACEN a ON m.ALMACEN_ID = a.ID
+                                            INNER JOIN MARW.ADMINTOTAL_PRODUCTO prod ON md.PRODUCTO_ID = prod.ID
+                                            INNER JOIN MARW.ADMINTOTAL_LINEA li ON prod.LINEA_ID = li.ID
+                                            INNER JOIN MARW.ADMINTOTAL_SUBLINEA sl ON prod.SUBLINEA_ID = sl.ID
+                                            LEFT OUTER JOIN MARW.ADMINTOTAL_UM um ON md.UM_ID = um.ID
+                                        WHERE
+                                            m.TIPO_MOVIMIENTO = 2
+                                            AND EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA)) = $1
+                                            AND m.CANCELADO = false
+                                            AND prod.CODIGO IN ($2)
+                                        GROUP BY
+                                            li.id,
+                                            sl.id,
+                                            li.NOMBRE,
+                                            sl.NOMBRE,
+                                            EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA))
+                                      ) sub ;"""
+        results = await conn_pg.fetchmany(query, params)
+    except Exception as err:
+        print(err)
+        print(traceback.print_exc())
+    finally:
+        return results
+
+
+async def get_existent_abc_records_p1(catalog_list, year, enterprise, conn, query):
+    cursor = None
+    results = []
+    try:
+
+        query = query.format(', '.join([str(catalog[0]) for catalog in catalog_list]))
+        params = (year, enterprise)
+
+        cursor = await conn.cursor()
+        await cursor.execute(query, params)
+
+        results = await cursor.fetchall()
+
+    except Exception as err:
+        print(err)
+        print(traceback.print_exc())
+
+    finally:
+        if cursor:
+            await cursor.close()
+
+        return results
+
 
 
 """
@@ -433,164 +515,117 @@ async def upsert_product_abc_part0(year, enterprise="marw"):
     5. Finalmente, se cierra la conexión a la base de datos.
 """
 async def upsert_product_abc_part1(catalog_list, year, enterprise = "marw"):
+    cursor = conn = cursor_pg = conn_pg = None
     try:
-        actual_year = datetime.datetime.now().year
-        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor(buffered=True)
+        current_year = datetime.datetime.now().year
+        conn = await aiom.connect(
+            host=ENV_MYSQL_HOST or "localhost",
+            user=ENV_MYSQL_USER or "root",
+            password=ENV_MYSQL_PASSWORD or "root",
+            db=ENV_MYSQL_NAME or "db",
+            port=int(ENV_MYSQL_PORT or "3306")
+        )
+        conn_pg =  await aiop.connect(
+                database=ENV_PSQL_NAME,
+                user=ENV_PSQL_USER,
+                host=ENV_PSQL_HOST,
+                password=ENV_PSQL_PASSWORD,
+                port=ENV_PSQL_PORT
+        )
+
+        cursor = await conn.cursor()
         row_year = None
-        cursor.execute("SELECT year FROM product_abc WHERE year = %s", (year,))        
-        row_year_sql = cursor.fetchone()        
+        await cursor.execute("SELECT year FROM product_abc WHERE year = %s", (year,))        
+        row_year_sql = await cursor.fetchone()        
         if row_year_sql is not None:
             row_year = row_year_sql[0]        
 
-        if row_year is None and year < actual_year or (int(year) + 1 == actual_year):
-            conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-            cursor_pg = conn_pg.cursor()
-            for catalog in catalog_list:
-                cursor_pg.execute(f"""
-                                  SELECT
-                                    ROUND(SUM(sub.TOTAL_IMPORTE),2) AS TOTAL_IMPORTE,
-                                    ROUND(SUM(sub.TOTAL_UTILIDAD),2) AS TOTAL_UTILIDAD,
-                                    ROUND(SUM(sub.UNIDADES_VENDIDAS),2) AS UNIDADES_VENDIDAS
-                                    FROM (SELECT                                        
-                                        ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
-                                        ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
-                                        ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
-                                    FROM
-                                        MARW.ADMINTOTAL_MOVIMIENTODETALLE md
-                                        INNER JOIN MARW.ADMINTOTAL_MOVIMIENTO m ON md.MOVIMIENTO_ID = m.POLIZA_PTR_ID
-                                        INNER JOIN MARW.ADMINTOTAL_CLIENTE cl ON m.PROVEEDOR_ID = cl.ID
-                                        INNER JOIN MARW.UTILS_CONDICION cond ON cl.CONDICION_ID = cond.ID
-                                        INNER JOIN MARW.ADMINTOTAL_POLIZA pol ON m.POLIZA_PTR_ID = pol.ID
-                                        LEFT OUTER JOIN MARW.ADMINTOTAL_ALMACEN a ON m.ALMACEN_ID = a.ID
-                                        INNER JOIN MARW.ADMINTOTAL_PRODUCTO prod ON md.PRODUCTO_ID = prod.ID
-                                        INNER JOIN MARW.ADMINTOTAL_LINEA li ON prod.LINEA_ID = li.ID
-                                        INNER JOIN MARW.ADMINTOTAL_SUBLINEA sl ON prod.SUBLINEA_ID = sl.ID
-                                        LEFT OUTER JOIN MARW.ADMINTOTAL_UM um ON md.UM_ID = um.ID
-                                    WHERE
-                                        m.TIPO_MOVIMIENTO = 2
-                                        AND EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA)) = %s
-                                        AND m.CANCELADO = false
-                                        AND prod.CODIGO IN %s
-                                    GROUP BY
-                                        li.id,
-                                        sl.id,
-                                        li.NOMBRE,
-                                        sl.NOMBRE,
-                                        EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA))
-                                  ) sub ;""", (year, tuple(catalog[1].split(', '))))
-                rows = cursor_pg.fetchone()
+        mysql_query = None
 
-                if rows is not None:                                       
-                    total_amount = rows[0]
-                    profit = rows[1]
-                    units_sold = rows[2]
-                    
-                    # Verificar si ya existe un registro con estos valores en product_abc
-                    cursor.execute(f"""
-                                    SELECT id 
-                                    FROM product_abc
-                                    WHERE catalog_id = %s
-                                        AND year = %s
-                                        AND assigned_company = %s
-                                        AND (total_amount IS NULL OR profit IS NULL OR units_sold IS NULL)                                   
-                                   """, (catalog[0], year, enterprise))
-                    existing_record = cursor.fetchone()
+        if row_year is None and year < current_year or (int(year) + 1 == current_year):
+            mysql_query = """SELECT id 
+                        FROM product_abc
+                        WHERE catalog_id IN ({0})
+                            AND year = %s
+                            AND assigned_company = %s
+                            AND (total_amount IS NULL OR profit IS NULL OR units_sold IS NULL)                                   
+                    """
+        elif year == current_year:
+            mysql_query = """
+                        SELECT id 
+                        FROM product_abc 
+                        WHERE catalog_id IN ({0})                                         
+                           AND year = %s
+                           AND assigned_company = %s                                   
+                      """,
 
-                    if existing_record is None:
-                        pass
-                    else:
-                        # Actualizar registro existente
-                        cursor.execute(f"""UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
-                                            WHERE catalog_id = %s AND year = %s AND assigned_company = %s""", (total_amount, profit, units_sold, catalog[0], year, enterprise))
-                        print("UPDATE al registro existente en product_abc")
-                        print("Catalogo: ", catalog[0])
-                        conn.commit()
-            cursor_pg.close()
-            conn_pg.close() 
-        elif year == actual_year:
-            conn_pg = p.connect(dbname=ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-            cursor_pg = conn_pg.cursor()
-            for catalog in catalog_list:
-                cursor_pg.execute(f"""
-                                  SELECT
-                                    ROUND(SUM(sub.TOTAL_IMPORTE),2) AS TOTAL_IMPORTE,
-                                    ROUND(SUM(sub.TOTAL_UTILIDAD),2) AS TOTAL_UTILIDAD,
-                                    ROUND(SUM(sub.UNIDADES_VENDIDAS),2) AS UNIDADES_VENDIDAS
-                                  FROM (SELECT
-                                        ROUND(SUM(md.IMPORTE),2) AS TOTAL_IMPORTE,
-                                        ROUND(SUM(md.IMPORTE - (md.COSTO_VENTA * md.CANTIDAD)),2) AS TOTAL_UTILIDAD,
-                                        ROUND(SUM(md.CANTIDAD),2) AS UNIDADES_VENDIDAS
-                                    FROM
-                                        MARW.ADMINTOTAL_MOVIMIENTODETALLE md
-                                        INNER JOIN MARW.ADMINTOTAL_MOVIMIENTO m ON md.MOVIMIENTO_ID = m.POLIZA_PTR_ID
-                                        INNER JOIN MARW.ADMINTOTAL_CLIENTE cl ON m.PROVEEDOR_ID = cl.ID
-                                        INNER JOIN MARW.UTILS_CONDICION cond ON cl.CONDICION_ID = cond.ID
-                                        INNER JOIN MARW.ADMINTOTAL_POLIZA pol ON m.POLIZA_PTR_ID = pol.ID
-                                        LEFT OUTER JOIN MARW.ADMINTOTAL_ALMACEN a ON m.ALMACEN_ID = a.ID
-                                        INNER JOIN MARW.ADMINTOTAL_PRODUCTO prod ON md.PRODUCTO_ID = prod.ID
-                                        INNER JOIN MARW.ADMINTOTAL_LINEA li ON prod.LINEA_ID = li.ID
-                                        INNER JOIN MARW.ADMINTOTAL_SUBLINEA sl ON prod.SUBLINEA_ID = sl.ID
-                                        LEFT OUTER JOIN MARW.ADMINTOTAL_UM um ON md.UM_ID = um.ID
-                                    WHERE
-                                        m.TIPO_MOVIMIENTO = 2
-                                        AND EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA)) = %s
-                                        AND m.CANCELADO = false
-                                        AND prod.CODIGO IN %s
-                                    GROUP BY
-                                        li.id,
-                                        sl.id,
-                                        li.NOMBRE,
-                                        sl.NOMBRE,
-                                        EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', pol.FECHA))
-                                  ) sub;""", (year, tuple(catalog[1].split(', '))))
-                rows = cursor_pg.fetchone()
+        if not mysql_query:
+            print(f'Year {year} doesnt satisfy any conditions')
+            return False
 
-                if rows is not None:                    
-                    total_amount = rows[0]
-                    profit = rows[1]
-                    units_sold = rows[2]
+        update_query = """UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
+                                            WHERE catalog_id = %s AND year = %s AND assigned_company = %s"""
+        async def job(catalog_list):
+            stats_list = await get_stats_from_pg_past_year_p1(catalog_list, year, conn_pg)
+            existent_abc_records = await get_existent_abc_records_p1(catalog_list, year, enterprise, conn, mysql_query)
+            
+            if not len(existent_abc_records):
+                return 
 
-                    # Verificar si ya existe un registro con estos valores
-                    cursor.execute(f"""
-                                    SELECT id 
-                                    FROM product_abc 
-                                    WHERE catalog_id = %s                                         
-                                        AND year = %s
-                                        AND assigned_company = %s                                   
-                                   """, (catalog[0], year, enterprise))
-                    existing_record = cursor.fetchone()
+            update_batch = []
+            for index, stats in enumerate(stats_list):
+                if stats is None:
+                    continue
 
-                    if existing_record is None:                        
-                        pass
-                    else:
-                        # Actualizar registro existente
-                        cursor.execute(f"""UPDATE product_abc SET total_amount = %s, profit = %s, units_sold = %s 
-                                            WHERE catalog_id = %s AND year = %s AND assigned_company = %s""", (total_amount, profit, units_sold, catalog[0], year, enterprise))
-                        conn.commit()
-            cursor_pg.close()
-            conn_pg.close()
-        else:
-            pass                 
-        cursor.close()
-        conn.close()        
+                abc_record = existent_abc_records[index]
+                catalog = catalog_list[index]
+
+                total_amount = stats.get('total_importe')
+                profit = stats.get('total_utilidad')
+                units_sold = stats.get('unidades_vendidas')
+        
+                if not len(abc_record):
+                    continue
+
+                update_batch.append((total_amount, profit, units_sold, catalog[0], year, enterprise))
+
+            cursor = await conn.cursor()
+            await cursor.executemany(update_query, update_batch)
+
+
+        batch_size = 500
+        full_batches = len(catalog_list) // batch_size
+        remainder_batch = len(catalog_list) %  batch_size
+
+        for i in range(full_batches):
+            start = i * batch_size
+            end = (i + 1) * batch_size
+            await job(catalog_list[start:end])
+            
+        if remainder_batch:
+            start = full_batches * batch_size
+            await job(catalog_list[start:])
+        
+
         return True
         
     except m.Error as e:
         print(f"Error MySQL: {e}")
         return False    
     except Exception as e:
+        print(traceback.print_exc())
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
-        if cursor:
-            cursor.close()
-        if cursor_pg:
+        if cursor is not None:
+            await cursor.close()
+        if cursor_pg is not None:
             cursor_pg.close()
-        if conn:
+        if conn is not None:
             conn.close()
-        if conn_pg:
-            conn_pg.close()
+        if conn_pg is not None:
+            await conn_pg.close()
 
 
 async def upsert_product_abc_part2(year, enterprise = "marw"):
@@ -601,10 +636,19 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
         last_month_update = 0
         cursor.execute("SELECT MAX(last_update) FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
         row = cursor.fetchone()
+        print(f'Row: {row}')
         if row is not None and row[0] is not None:
             last_month_update = row[0].month
+
         if int(year) < actual_year or (int(year) +1 == actual_year and last_month_update < 6):
-            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND (inventory_close_u IS NULL OR inventory_close_p IS NULL) AND assigned_company = %s", (year, enterprise))
+            cursor.execute("""
+                                SELECT 
+                                    id, catalog_id 
+                                FROM product_abc 
+                                    WHERE year = %s AND
+                                        (inventory_close_u IS NULL OR inventory_close_p IS NULL) AND
+                                        assigned_company = %s""",
+                           (year, enterprise))
             rows = cursor.fetchall()
 
             for row in rows:
@@ -616,7 +660,9 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
                 product_tuple = None;
                 
                 if rows2_tuple:                                                            
-                    cursor.execute(f"SELECT code FROM product WHERE id IN %s", (rows2_tuple))                                        
+                    print(rows2_tuple)
+                    placeholders = ','.join(['%s'] * len(rows2_tuple))
+                    cursor.execute(f"SELECT code FROM product WHERE id IN ({placeholders})", rows2_tuple)                                        
                     rows3 = cursor.fetchall()
 
                     product_tuple = tuple([r[0] for r in rows3])                                        
@@ -662,62 +708,63 @@ async def upsert_product_abc_part2(year, enterprise = "marw"):
             cursor.close()
             conn.close()
             return True
-        elif year == actual_year:
-            cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
-            rows = cursor.fetchall()
+        # elif year == actual_year:
+            # cursor.execute("SELECT id, catalog_id FROM product_abc WHERE year = %s AND assigned_company = %s", (year, enterprise))
+            # rows = cursor.fetchall()
 
-            for row in rows:
-                row_catalog_id = row[1]
-                cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND add_year <= %s AND add_year = (SELECT MAX(add_year) FROM product_catalog WHERE catalog_id = %s AND add_year <= %s)", (row_catalog_id, year, row_catalog_id, year))
-                rows2 = cursor.fetchall()
-                product_tuple = tuple([r[0] for r in rows2])
-                if product_tuple:
-                    conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
-                    cursor_pg = conn_pg.cursor()
-                    cursor_pg.execute(f"""SELECT
-                                            ROUND(SUM(sub.existencia), 2) AS INVENTARIO_CIERRE_U,
-                                            ROUND(SUM(sub.existencia*sub.costo_venta), 2) AS INVENTARIO_CIERRE_P
-                                        FROM (
-                                            SELECT
-                                            md_inv.pxa_id,
-                                            md_inv.existencia,
-                                            md_inv.costo_venta,
-                                            ROW_NUMBER() OVER (PARTITION BY md_inv.pxa_id ORDER BY p_inv_lookup.fecha DESC, p_inv_lookup.id DESC, md_inv.id DESC) AS rn
-                                            FROM marw.admintotal_movimientodetalle md_inv
-                                            INNER JOIN marw.admintotal_movimiento m_inv ON m_inv.poliza_ptr_id = md_inv.movimiento_id
-                                            INNER JOIN marw.admintotal_poliza p_inv_lookup ON m_inv.poliza_ptr_id = p_inv_lookup.id
-                                            INNER JOIN marw.admintotal_productoalmacen pxa_inv ON md_inv.pxa_id = pxa_inv.id
-                                            INNER JOIN marw.admintotal_producto prod_inv ON pxa_inv.producto_id = prod_inv.id
-                                            WHERE md_inv.pxa_id IS NOT NULL
-                                            AND m_inv.tipo_movimiento = 2
-                                            AND m_inv.cancelado = false
-                                            AND EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', p_inv_lookup.FECHA)) <= %s
-                                            AND prod_inv.CODIGO IN %s
-                                        ) sub
-                                        WHERE
-                                        sub.rn = 1;""", (year, product_tuple))
-                    rows3 = cursor_pg.fetchall()
-                    cursor_pg.close()
-                    conn_pg.close()
-                    for row3 in rows3:
-                        cursor.execute(f"SELECT id FROM product_abc WHERE catalog_id = %s AND year = %s AND assigned_company = %s", (row_catalog_id, year, enterprise))
-                        row2 = cursor.fetchone()
-                        if row2 is None:
-                            cursor.execute(f"INSERT INTO product_abc (catalog_id, inventory_close_u, inventory_close_p, year, enterprise) VALUES (%s, %s, %s, %s, %s)", (row_catalog_id, row3[0], row3[1], year, enterprise))
-                        else:
-                            cursor.execute(f"UPDATE product_abc SET inventory_close_u = %s, inventory_close_p = %s WHERE id = %s", (row3[0], row3[1], row2[0]))
-            conn.commit()
-            cursor.close()
-            conn.close()
-            return True
-        else:
-            pass
-            conn.commit()
-            cursor.close()
-            conn.close()
-            return True    
+            # for row in rows:
+                # row_catalog_id = row[1]
+                # cursor.execute(f"SELECT product_id FROM product_catalog WHERE catalog_id = %s AND add_year <= %s AND add_year = (SELECT MAX(add_year) FROM product_catalog WHERE catalog_id = %s AND add_year <= %s)", (row_catalog_id, year, row_catalog_id, year))
+                # rows2 = cursor.fetchall()
+                # product_tuple = tuple([r[0] for r in rows2])
+                # if product_tuple:
+                    # conn_pg = p.connect(dbname= ENV_PSQL_NAME, user=ENV_PSQL_USER, host=ENV_PSQL_HOST, password=ENV_PSQL_PASSWORD, port=ENV_PSQL_PORT)
+                    # cursor_pg = conn_pg.cursor()
+                    # cursor_pg.execute(f"""SELECT
+                                            # ROUND(SUM(sub.existencia), 2) AS INVENTARIO_CIERRE_U,
+                                            # ROUND(SUM(sub.existencia*sub.costo_venta), 2) AS INVENTARIO_CIERRE_P
+                                        # FROM (
+                                            # SELECT
+                                            # md_inv.pxa_id,
+                                            # md_inv.existencia,
+                                            # md_inv.costo_venta,
+                                            # ROW_NUMBER() OVER (PARTITION BY md_inv.pxa_id ORDER BY p_inv_lookup.fecha DESC, p_inv_lookup.id DESC, md_inv.id DESC) AS rn
+                                            # FROM marw.admintotal_movimientodetalle md_inv
+                                            # INNER JOIN marw.admintotal_movimiento m_inv ON m_inv.poliza_ptr_id = md_inv.movimiento_id
+                                            # INNER JOIN marw.admintotal_poliza p_inv_lookup ON m_inv.poliza_ptr_id = p_inv_lookup.id
+                                            # INNER JOIN marw.admintotal_productoalmacen pxa_inv ON md_inv.pxa_id = pxa_inv.id
+                                            # INNER JOIN marw.admintotal_producto prod_inv ON pxa_inv.producto_id = prod_inv.id
+                                            # WHERE md_inv.pxa_id IS NOT NULL
+                                            # AND m_inv.tipo_movimiento = 2
+                                            # AND m_inv.cancelado = false
+                                            # AND EXTRACT(YEAR FROM TIMEZONE('America/Mexico_City', p_inv_lookup.FECHA)) <= %s
+                                            # AND prod_inv.CODIGO IN %s
+                                        # ) sub
+                                        # WHERE
+                                        # sub.rn = 1;""", (year, product_tuple))
+                    # rows3 = cursor_pg.fetchall()
+                    # cursor_pg.close()
+                    # conn_pg.close()
+                    # for row3 in rows3:
+                        # cursor.execute(f"SELECT id FROM product_abc WHERE catalog_id = %s AND year = %s AND assigned_company = %s", (row_catalog_id, year, enterprise))
+                        # row2 = cursor.fetchone()
+                        # if row2 is None:
+                            # cursor.execute(f"INSERT INTO product_abc (catalog_id, inventory_close_u, inventory_close_p, year, enterprise) VALUES (%s, %s, %s, %s, %s)", (row_catalog_id, row3[0], row3[1], year, enterprise))
+                        # else:
+                            # cursor.execute(f"UPDATE product_abc SET inventory_close_u = %s, inventory_close_p = %s WHERE id = %s", (row3[0], row3[1], row2[0]))
+            # conn.commit()
+            # cursor.close()
+            # conn.close()
+            # return True
+        # else:
+            # pass
+            # conn.commit()
+            # cursor.close()
+            # conn.close()
+            # return True    
     except Exception as e:        
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if cursor:
@@ -850,6 +897,7 @@ async def upsert_product_abc_part3(year):
             return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -973,6 +1021,7 @@ async def upsert_product_abc_part4(year):
             return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -1056,6 +1105,7 @@ async def upsert_product_abc_part5(year):
             return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -1146,6 +1196,7 @@ async def upsert_product_abc_part6(year):
             return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -1220,6 +1271,7 @@ async def upsert_product_abc_part7(year):
             return True
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False
     finally:
         if conn:
@@ -1232,7 +1284,7 @@ async def upsert_all(year, enterprise):
         await upsert_product_abc_part0(year, enterprise)
         catalog_list = await get_product_catalogs(year)        
         if catalog_list:               
-                #await upsert_product_abc_part1(catalog_list, year, enterprise)        
+                await upsert_product_abc_part1(catalog_list, year, enterprise)        
                 await upsert_product_abc_part2(year, enterprise)
         #         await upsert_product_abc_part3(year)
         #         await upsert_product_abc_part4(year)
@@ -1244,4 +1296,5 @@ async def upsert_all(year, enterprise):
         #     return False
     except Exception as e:
         print(f"Error: {e}")
+        print(traceback.print_exc())
         return False

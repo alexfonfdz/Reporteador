@@ -11,8 +11,10 @@ toml==0.10.2
 Unipath==1.1
 whitenoise==5.3.0
 mysqlclient
-psycopg2-binary
+psycopg2-binarj
 python-dotenv
 mysql-connector-python
 aiomysql
 pandas
+openpyxl
+asyncpg

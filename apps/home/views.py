@@ -350,7 +350,8 @@ def read_and_filter_excel(file_path, output_filtered_file):
         df = df.rename(columns={
             "Descripción 2": "Catalogo", 
             "Línea": "Familia",
-            "Sublínea": "Subfamilia"
+            "Sublínea": "Subfamilia",
+            "Código": "Codigo"
         })
 
         # Validar que las columnas necesarias existan
@@ -552,6 +553,7 @@ def insert_product_catalog(request):
         
         # Check if the file exists
         if not os.path.exists(file_path):
+            print("The file doesnt exist")
             return JsonResponse({'error': f'The file {file_path} does not exist.'}, status=404)
         df = pd.read_excel(file_path)
 
@@ -561,36 +563,14 @@ def insert_product_catalog(request):
         # Validar que las columnas necesarias existan
         if "Catalogo" not in df.columns or "Codigo" not in df.columns:
             return JsonResponse({'error': f'El archivo Excel debe contener las columnas "Catalogo" y "Codigo". Columnas encontradas: {list(df.columns)}'}, status=400)
+        print("El excel satisface las columnas")
 
-        # Conectar a la base de datos MySQL
-        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
-        cursor = conn.cursor()
+        product_catalog = df.to_dict(orient='records')
 
-        # Iterar sobre cada fila del archivo Excel
-        for _, row in df.iterrows():
-            catalog_description = row["Catalogo"]
-            product_code = row["Codigo"]
+        asyncio.run(upsert_product_catalogs(product_catalog, year))   
 
-            # Buscar el ID del producto en la tabla product
-            cursor.execute("SELECT id FROM product WHERE code = %s", (product_code,))
-            product_id = cursor.fetchone()
-            if product_id is None:
-                continue  # Si no se encuentra el producto, pasar a la siguiente fila
-            product_id = product_id[0]
+        
 
-            # Buscar el ID del catálogo en la tabla catalog
-            cursor.execute("SELECT id FROM catalog WHERE description = %s", (catalog_description,))
-            catalog_id = cursor.fetchone()
-            if catalog_id is None:
-                continue  # Si no se encuentra el catálogo, pasar a la siguiente fila
-            catalog_id = catalog_id[0]
-
-            # Insertar o actualizar en la tabla product_catalog
-            asyncio.run(upsert_product_catalogs(product_code, catalog_description, year))
-
-        # Cerrar la conexión a la base de datos
-        cursor.close()
-        conn.close()
 
         return JsonResponse({'msg': 'Los registros se han procesado correctamente en product_catalog.'}, status=200)
 

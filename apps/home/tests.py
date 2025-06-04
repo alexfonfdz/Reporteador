@@ -15,7 +15,9 @@ class InsertDataTestCase(TestCase):
     def setUp(self) -> None:
         self.c = Client()
 
-    def test_insert_families_and_subfamilies(self):
+    def testA_insert_families_and_subfamilies(self):
+        print("===================================================================================================")
+        print("INSERTANDO FAMILIAS Y SUBFAMILIAS")
         start = datetime.now()
         self.c.post('/get_families_from_admintotal')
         end = datetime.now()
@@ -42,7 +44,10 @@ class InsertDataTestCase(TestCase):
 
         print(f'Took {difference.total_seconds()} seconds to insert families and subfamilies')
 
-    def test_insert_products(self):
+    def testB_insert_products(self):
+        print("===================================================================================================")
+        print("INSERTANDO PRODUCTOS")
+
         start = datetime.now()
         self.c.post('/get_products_from_admintotal')
         end = datetime.now()
@@ -63,7 +68,11 @@ class InsertDataTestCase(TestCase):
 
         print(f'Took {difference.total_seconds()} seconds to insert products')
 
-    def test_insert_catalog(self):
+    def testC_insert_catalog(self):
+        print("===================================================================================================")
+        print("INSERTANDO CATALOGO")
+
+
         start = datetime.now()
         response = self.c.post('/get_catalogs_from_admintotal')
         end = datetime.now()
@@ -83,4 +92,54 @@ class InsertDataTestCase(TestCase):
         print(f'catalog insertions {catalog_insertion}')
 
         print(f'Took {difference.total_seconds()} seconds to insert catalog')
+
+    def testD_insert_product_catalog(self):
+        print("===================================================================================================")
+        print("INSERTANDO PRODUCTO-CATALOGO")
+
+
+        start = datetime.now()
+        response = self.c.post('/insert_product_catalog', {"year": 2024}, content_type='application/json')
+        end = datetime.now()
+
+        difference = end - start
+        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
+
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT Count(*) FROM product_catalog")
+        catalog_insertion = cursor.fetchall()
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        print(f'product_catalog insertions {catalog_insertion}')
+
+        print(f'Took {difference.total_seconds()} seconds to insert product_catalog')
+
+    def testE_insert_data_product_abc(self):
+        print("===================================================================================================")
+        print("INSERTANDO DATA PRODUCTO ABC")
+
+        start = datetime.now()
+        response = self.c.post('/insert_data_to_product_abc', {"year": 2024, "enterprise": "marw"}, content_type='application/json')
+        end = datetime.now()
+
+        difference = end - start
+        conn = m.connect(host=ENV_MYSQL_HOST, user=ENV_MYSQL_USER, password=ENV_MYSQL_PASSWORD, database=ENV_MYSQL_NAME, port=ENV_MYSQL_PORT)
+
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT Count(*) FROM product_abc")
+        catalog_insertion = cursor.fetchall()
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        print(f'product_abc part 0 insertions {catalog_insertion}')
+
+        print(f'Took {difference.total_seconds()} seconds to insert product_abc part 0')
+
 
