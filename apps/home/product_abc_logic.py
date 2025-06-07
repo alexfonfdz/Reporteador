@@ -1,19 +1,178 @@
+from asyncpg.connection import asyncio
+from apps.home.queries.mysql import UPSERT_FAMILIES, UPSERT_SUBFAMILIES, UPSERT_BRANDS
+from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
-import psycopg2 as p
-import mysql.connector as m
-import datetime
-import pandas as pd
+import asyncpg
+import aiomysql
+from dataclasses import dataclass
+
+@dataclass
+class EnterpriseConnectionData:
+    schema: str
+    name: str
+    user: str
+    password: str
+    host: str
+    port: int
+
+
 
 enterprises = {
-    "MR DIESEL" : {
-        "schema": ENV_PSQL_DB_SCHEMA,
-        "name": ENV_PSQL_NAME,
-        "user": ENV_PSQL_USER,
-        "password": ENV_PSQL_PASSWORD,
-        "host": ENV_PSQL_HOST,
-        "port": ENV_PSQL_PORT
-    }
+    "MR DIESEL" : EnterpriseConnectionData(
+        schema=str(ENV_PSQL_DB_SCHEMA),
+        port=int(ENV_PSQL_PORT or 5432),
+        user=str(ENV_PSQL_USER),
+        password=str(ENV_PSQL_PASSWORD),
+        host=str(ENV_PSQL_HOST),
+        name=str(ENV_PSQL_NAME)
+    )
 }
+
+
+
+
+async def upsert_families(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+    """Fetch families for a given schema in admintotal and upserts it in the application database
+
+    Returns
+    -------
+    int
+        Number of affected rows on the application database. If there was no return on postgres or mysql it returns -1.
+    """
+    pg_query = SELECT_FAMILIES(schema)
+
+    families = []
+    async with pg_pool.acquire() as conn:
+        families = await conn.fetch(pg_query)   
+
+    if len(families) == 0:
+        return -1 
+
+    query_params = [(family.get('nombre'), family.get('id')) for family in families]
+
+    my_query = UPSERT_FAMILIES()
+
+    affected = -1
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(my_query, query_params)
+            affected = cursor.rowcount
+        await conn.commit()
+
+    return affected
+
+
+
+async def upsert_subfamilies(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str):
+    """Fetch subfamilies for a given schema in admintotal and upserts it in the application database
+
+    Returns
+    -------
+    int
+        Number of affected rows on the application database. If there was no return on postgres or mysql it returns -1.
+    """
+    pg_query = SELECT_SUBFAMILIES(schema)
+
+    subfamilies = []
+    async with pg_pool.acquire() as conn:
+        subfamilies = await conn.fetch(pg_query)   
+
+    if len(subfamilies) == 0:
+        return -1 
+
+    query_params = [(subfamily.get('nombre'), subfamily.get('id')) for subfamily in subfamilies]
+
+    my_query = UPSERT_SUBFAMILIES()
+
+    affected = -1
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(my_query, query_params)
+            affected = cursor.rowcount
+        await conn.commit()
+
+    return affected
+
+async def upsert_brands(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:str):
+    """Fetch brands for a given schema in admintotal and upserts it in the application database
+
+    Returns
+    -------
+    int
+        Number of affected rows on the application database. If there was no return on postgres or mysql it returns -1.
+    """
+    pg_query = SELECT_BRANDS(schema)
+
+    brands = []
+    async with pg_pool.acquire() as conn:
+        brands = await conn.fetch(pg_query)   
+
+    if len(brands) == 0:
+        return -1 
+
+    query_params = [(brand.get('nombre'), brand.get('id')) for brand in brands]
+
+    my_query = UPSERT_BRANDS()
+
+    affected = -1
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(my_query, query_params)
+            affected = cursor.rowcount
+        await conn.commit()
+
+    return affected
+
+
+async def refresh_data(enterprise: str):
+    """Fetch families, subfamilies and brands for the schema of a given enterprise in admintotal's postgres and
+    inserts them in their respective tables in the application's database
+    """
+    connection_data = enterprises.get(enterprise)
+
+    if not connection_data:
+        return None
+
+    pg_pool = await asyncpg.create_pool(
+        user=connection_data.user,
+        host=connection_data.host,
+        port=connection_data.port,
+        database=connection_data.name,
+        password=connection_data.password,
+        min_size=3,
+        max_size=5,
+        max_inactive_connection_lifetime=300
+    )
+
+    my_pool = await aiomysql.create_pool(
+        user=ENV_MYSQL_USER,
+        host=ENV_MYSQL_HOST,
+        port=int(ENV_MYSQL_PORT or 3306),
+        password=ENV_MYSQL_PASSWORD,
+        db=ENV_MYSQL_NAME,
+        minsize=3,
+        maxsize=5
+    )
+
+    todos = [upsert_families, upsert_subfamilies, upsert_brands]
+    tasks = []
+
+    async with asyncio.TaskGroup() as tg:
+        for todo in todos:
+            task = tg.create_task(
+                todo(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+            )
+            tasks.append(task)
+
+    # for index, task in enumerate(tasks):
+        # print(f'Result on task {todos[index].__name__}: {task.result()}')
+
+
+
+ 
+        
+
+        
 
 ### Enterprises funciona para ir agregando mas empresas y sus respectivos datos de conexion a la base de datos, tomarlo en cuenta al traer los datos
 ### Existe la variable ENV_UPDATE_ALL_DATES que si es True no se toma en cuenta el ultimo año o mes o fecha de actualización y se actualizan todos los registros

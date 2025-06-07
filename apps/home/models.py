@@ -19,6 +19,9 @@ class Family(models.Model):
         db_table = "family"
         verbose_name = "Family"
         verbose_name_plural = "Families"
+        constraints=[
+            models.UniqueConstraint(fields=["id_admin"], name="id_admin_family_unique_idx")
+        ]
     
 class SubFamily(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
@@ -31,6 +34,9 @@ class SubFamily(models.Model):
         db_table = "subfamily"
         verbose_name = "SubFamily"
         verbose_name_plural = "SubFamilies"
+        constraints=[
+            models.UniqueConstraint(fields=["id_admin"], name="id_admin_subfamily_unique_idx")
+        ]
 
 class Brand(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
@@ -43,6 +49,9 @@ class Brand(models.Model):
         db_table = "brand"
         verbose_name = "Brand"
         verbose_name_plural = "Brands"
+        constraints=[
+            models.UniqueConstraint(fields=["id_admin"], name="id_admin_brand_unique_idx")
+        ]
 
 class Catalog(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)   
@@ -72,6 +81,9 @@ class Product(models.Model):
         db_table = "product"
         verbose_name = "Product"
         verbose_name_plural = "Products"
+        constraints=[
+            models.UniqueConstraint(fields=["id_admin"], name="id_admin_product_unique_idx")
+        ]
 
 
 class ProductABC(models.Model):
