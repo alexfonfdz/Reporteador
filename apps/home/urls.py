@@ -22,14 +22,6 @@ urlpatterns = [
     path('getAlmacenes', views.get_almacenes, name='getAlmacenes'),
     path('getAlmacenData', views.get_almacen_data, name='getAlmacenData'),
 
-    # Migrar registros de admin_total a la base de datos local
-    path('get_families_from_admintotal', views.get_families_from_admintotal, name='get_families_from_admintotal'),
-    path('get_products_from_admintotal', views.get_products_from_admintotal, name='get_products_from_admintotal'),    
-    path('get_catalogs_from_admintotal', views.get_catalogs_from_admintotal, name='get_catalogs_from_admintotal'),    
-    path('insert_product_catalog', views.insert_product_catalog, name='insert_product_catalog'),
-    
-    path('insert_data_to_product_abc', views.insert_data_to_product_abc, name='insert_data_to_product_abc'),
-
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),
 

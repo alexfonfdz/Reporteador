@@ -24,6 +24,7 @@ ENV_PSQL_PASSWORD = os.getenv('PSQL_PASSWORD')
 ENV_PSQL_HOST = os.getenv('PSQL_HOST')
 ENV_PSQL_PORT = os.getenv('PSQL_PORT')
 ENV_PSQL_DB_SCHEMA = os.getenv('PSQL_DB_SCHEMA')
+ENV_UPDATE_ALL_DATES = os.getenv('UPDATE_ALL_DATES', 'False')
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = Path(__file__).parent
