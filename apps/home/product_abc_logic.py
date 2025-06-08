@@ -1,10 +1,11 @@
 from asyncpg.connection import asyncio
-from apps.home.queries.mysql import UPSERT_FAMILIES, UPSERT_SUBFAMILIES, UPSERT_BRANDS
+from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_SUBFAMILIES, UPSERT_BRANDS
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
 import asyncpg
 import aiomysql
 from dataclasses import dataclass
+import pandas as pd
 
 @dataclass
 class EnterpriseConnectionData:
@@ -29,8 +30,29 @@ enterprises = {
 }
 
 
+async def upsert_catalog(my_pool: aiomysql.Pool, catalog_path: str, catalog_name_column: str):
+    """Reads the catalog file and inserts the catalog names in the application database
+
+    Returns
+    -------
+    int
+        Number of affected rows on the application database. If there was no return on postgres or mysql it returns -1.
+    """
+    catalog_df = pd.read_excel(catalog_path)
+    catalog_names = catalog_df[catalog_name_column].unique() 
 
 
+    my_query = UPSERT_CATALOGS()
+    query_params = [(catalog) for catalog in catalog_names]
+
+    affected = -1
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(my_query, query_params)
+            affected = cursor.rowcount
+
+    return affected
+    
 async def upsert_families(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
     """Fetch families for a given schema in admintotal and upserts it in the application database
 
@@ -124,7 +146,7 @@ async def upsert_brands(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:st
     return affected
 
 
-async def refresh_data(enterprise: str):
+async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: str):
     """Fetch families, subfamilies and brands for the schema of a given enterprise in admintotal's postgres and
     inserts them in their respective tables in the application's database
     """
@@ -164,8 +186,14 @@ async def refresh_data(enterprise: str):
             )
             tasks.append(task)
 
-    for index, task in enumerate(tasks):
-        print(f'Result on task {todos[index].__name__}: {task.result()}')
+        tasks.append(
+            tg.create_task(
+                upsert_catalog(my_pool=my_pool, catalog_path=catalog_path, catalog_name_column=catalog_name_column)
+            )
+        )
+
+    for task in tasks:
+        print(f'Result on task {task.get_name()}: {task.result()}')
 
 
 

@@ -24,3 +24,10 @@ ON DUPLICATE KEY
 UPDATE name=VALUES(name);
 """
     )
+
+def UPSERT_CATALOGS():
+    return(
+"""
+INSERT IGNORE INTO catalog (name) VALUES(%s);
+"""
+    )
