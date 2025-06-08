@@ -6,7 +6,7 @@ Copyright (c) 2019 - present AppSeed.us
 from asyncpg.connection import asyncio
 from decouple import os
 from django.test import TestCase
-from apps.home.product_abc_logic import refresh_data, upsert_catalog
+from apps.home.product_abc_logic import refresh_data
 
 # Create your tests here.
 
