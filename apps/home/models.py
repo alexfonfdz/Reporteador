@@ -11,6 +11,7 @@ from django.utils import timezone
 class Family(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
     id_admin = models.IntegerField()
+    enterprise = models.CharField(max_length=100, unique=False, blank=False, default="none")
 
     def __str__(self):
         return self.name
@@ -20,12 +21,13 @@ class Family(models.Model):
         verbose_name = "Family"
         verbose_name_plural = "Families"
         constraints=[
-            models.UniqueConstraint(fields=["id_admin"], name="id_admin_family_unique_idx")
+            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_family_unique_idx")
         ]
     
 class SubFamily(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
     id_admin = models.IntegerField()
+    enterprise = models.CharField(max_length=100, unique=False, blank=False, default="none")
 
     def __str__(self):
         return self.name
@@ -35,12 +37,13 @@ class SubFamily(models.Model):
         verbose_name = "SubFamily"
         verbose_name_plural = "SubFamilies"
         constraints=[
-            models.UniqueConstraint(fields=["id_admin"], name="id_admin_subfamily_unique_idx")
+            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_subfamily_unique_idx")
         ]
 
 class Brand(models.Model):
     name = models.CharField(max_length=100, unique=False, blank=True)
     id_admin = models.IntegerField()
+    enterprise = models.CharField(max_length=100, unique=False, blank=False, default="none")
 
     def __str__(self):
         return self.name
@@ -50,7 +53,7 @@ class Brand(models.Model):
         verbose_name = "Brand"
         verbose_name_plural = "Brands"
         constraints=[
-            models.UniqueConstraint(fields=["id_admin"], name="id_admin_brand_unique_idx")
+            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_brand_unique_idx")
         ]
 
 class Catalog(models.Model):
@@ -63,6 +66,9 @@ class Catalog(models.Model):
         db_table = "catalog"
         verbose_name = "Catalog"
         verbose_name_plural = "Catalogs"
+        constraints=[
+            models.UniqueConstraint(fields=["name"], name="catalog_name_unique_idx") 
+        ]
 
 class Product(models.Model):
     family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='products')
@@ -73,6 +79,8 @@ class Product(models.Model):
     code = models.CharField(max_length=100, unique=True)
     description = models.TextField()
     create_date = models.DateTimeField()
+    enterprise = models.CharField(max_length=100, unique=False, blank=False, default="none")
+
 
     def __str__(self):
         return self.description
@@ -82,7 +90,7 @@ class Product(models.Model):
         verbose_name = "Product"
         verbose_name_plural = "Products"
         constraints=[
-            models.UniqueConstraint(fields=["id_admin"], name="id_admin_product_unique_idx")
+            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_product_unique_idx")
         ]
 
 

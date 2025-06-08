@@ -50,7 +50,7 @@ async def upsert_families(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
 
     query_params = [(family.get('nombre'), family.get('id')) for family in families]
 
-    my_query = UPSERT_FAMILIES()
+    my_query = UPSERT_FAMILIES(schema)
 
     affected = -1
     async with my_pool.acquire() as conn:
@@ -82,7 +82,7 @@ async def upsert_subfamilies(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, sche
 
     query_params = [(subfamily.get('nombre'), subfamily.get('id')) for subfamily in subfamilies]
 
-    my_query = UPSERT_SUBFAMILIES()
+    my_query = UPSERT_SUBFAMILIES(schema)
 
     affected = -1
     async with my_pool.acquire() as conn:
@@ -112,7 +112,7 @@ async def upsert_brands(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:st
 
     query_params = [(brand.get('nombre'), brand.get('id')) for brand in brands]
 
-    my_query = UPSERT_BRANDS()
+    my_query = UPSERT_BRANDS(schema)
 
     affected = -1
     async with my_pool.acquire() as conn:
@@ -164,8 +164,8 @@ async def refresh_data(enterprise: str):
             )
             tasks.append(task)
 
-    # for index, task in enumerate(tasks):
-        # print(f'Result on task {todos[index].__name__}: {task.result()}')
+    for index, task in enumerate(tasks):
+        print(f'Result on task {todos[index].__name__}: {task.result()}')
 
 
 

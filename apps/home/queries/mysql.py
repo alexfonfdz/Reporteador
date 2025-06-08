@@ -1,25 +1,25 @@
-def UPSERT_FAMILIES():
+def UPSERT_FAMILIES(enterprise: str):
     return (
-"""
-INSERT INTO family (name, id_admin) VALUES (%s, %s)
+f"""
+INSERT INTO family (name, id_admin, enterprise) VALUES (%s, %s, '{enterprise}')
 ON DUPLICATE KEY
 UPDATE name=VALUES(name);
 """
     )
 
-def UPSERT_SUBFAMILIES():
+def UPSERT_SUBFAMILIES(enterprise: str):
     return (
-"""
-INSERT INTO subfamily (name, id_admin) VALUES (%s, %s)
+f"""
+INSERT INTO subfamily (name, id_admin, enterprise) VALUES (%s, %s, '{enterprise}')
 ON DUPLICATE KEY
 UPDATE name=VALUES(name);
 """
     )
 
-def UPSERT_BRANDS(): 
+def UPSERT_BRANDS(enterprise: str): 
     return (
-"""
-INSERT INTO brand (name, id_admin) VALUES (%s, %s)
+f"""
+INSERT INTO brand (name, id_admin, enterprise) VALUES (%s, %s, '{enterprise}')
 ON DUPLICATE KEY
 UPDATE name=VALUES(name);
 """
