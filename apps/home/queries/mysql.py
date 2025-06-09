@@ -48,3 +48,16 @@ ON DUPLICATE KEY UPDATE
     subfamily_id=VALUES(subfamily_id);
 """
     )
+
+def UPSERT_MOVEMENTS(enterprise: str):
+    return (
+f"""
+INSERT IGNORE INTO movements (
+    id_admin, movement_date, is_order, is_input, is_output, pending, folio, serie,
+    aditional_folio, paid, payment_method, quantity, total_quantity, amount, iva,
+    discount, amount_discount, total, cost_of_sale, profit, currency, order_id_admin,
+    movement_type, canceled, enterprise
+)
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'{enterprise}');
+"""
+    )
