@@ -289,6 +289,9 @@ class Movements(models.Model):
         db_table = "movements"
         verbose_name = "Movement"
         verbose_name_plural = "Movements"
+        constraints = [
+            models.UniqueConstraint(fields=['id_admin', 'enterprise'], name='enterprise_id_admin_unique')
+        ]
 
 
 class MovementsDetail(models.Model):
