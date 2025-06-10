@@ -77,3 +77,79 @@ VALUES (
 );
 """
 )
+
+
+
+# Queries for ProductABC
+def GET_DISTINCT_YEARS_MOVEMENTS(enterprise: str):
+    return (
+    f"""
+SELECT DISTINCT YEAR(movement_date) AS year
+FROM movements
+WHERE enterprise = '{enterprise}';
+"""
+    )
+
+def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR(enterprise: str):
+    return (
+    f"""
+SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
+SUM(amount-(cost_of_sale * quantity)) AS total_profit
+FROM movements_detail
+WHERE enterprise = '{enterprise}' 
+GROUP BY YEAR(movement_detail_date)
+ORDER BY YEAR(movement_detail_date) DESC;
+"""
+    )
+
+def GET_PRODUCTS_SALES_SUMMARY_BY_YEAR(enterprise: str, year: int):
+    return (
+    f"""
+SELECT
+    p.id AS product_id,
+    p.code,
+    p.description,
+    p.create_date,
+    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END), 0) AS total_amount,
+    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END), 0) AS total_profit,
+    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END), 0) AS total_quantity
+FROM product p
+LEFT JOIN movements_detail md
+    ON md.product_id = p.id
+    AND md.enterprise = '{enterprise}'
+    AND YEAR(md.movement_detail_date) = {year}
+WHERE p.enterprise = '{enterprise}'
+  AND YEAR(p.create_date) <= {year}
+GROUP BY p.id, p.code, p.description, p.create_date
+ORDER BY
+    total_amount DESC,
+    CASE WHEN total_amount = 0 THEN p.description ELSE NULL END ASC
+;
+"""
+    )
+
+def UPSERT_PRODUCT_ABC():
+    return (
+    f"""
+    INSERT INTO product_abc (
+        product_id, sales_percentage, acc_sales_percentage, sold_abc,
+        profit_percentage, acc_profit_percentage, profit_abc, top_products,
+        enterprise, year, last_update
+    )
+    VALUES (
+        %(product_id)s, %(sales_percentage)s, %(acc_sales_percentage)s, %(sold_abc)s,
+        %(profit_percentage)s, %(acc_profit_percentage)s, %(profit_abc)s, %(top_products)s,
+        %(enterprise)s, %(year)s, %(last_update)s
+    )
+    ON DUPLICATE KEY UPDATE
+        sales_percentage=VALUES(sales_percentage),
+        acc_sales_percentage=VALUES(acc_sales_percentage),
+        sold_abc=VALUES(sold_abc),
+        profit_percentage=VALUES(profit_percentage),
+        acc_profit_percentage=VALUES(acc_profit_percentage),
+        profit_abc=VALUES(profit_abc),
+        top_products=VALUES(top_products),
+        last_update=VALUES(last_update)
+    ;
+    """
+    )

@@ -1,4 +1,4 @@
-from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS
+from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
 import asyncpg
@@ -6,10 +6,7 @@ import aiomysql
 from dataclasses import dataclass
 import pandas as pd
 import asyncio
-import warnings
-
-
-warnings.filterwarnings('ignore', module=r"aiomysql")
+import datetime
 
 @dataclass
 class EnterpriseConnectionData:
@@ -438,8 +435,6 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
 
     print(f'Products affected: {affected_products}')
     print(f'Movements affected: {affected_movements}')
-    print(f'Movement details affected: {affected_movement_details}')
-
 
 
 
@@ -447,6 +442,101 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
         
 
         
+### Product ABC 
+async def calculate_product_abc(my_pool, enterprise: str):
+    product_abc_records = []
+
+    async with my_pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            # 1. Obtener los años con movimientos
+            await cursor.execute(GET_DISTINCT_YEARS_MOVEMENTS(enterprise))
+            years = [row['year'] for row in await cursor.fetchall()]
+
+            for year in years:
+                # 2. Obtener el total de ventas y utilidad del año
+                await cursor.execute(GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR(enterprise))
+                totals = {row['year']: row for row in await cursor.fetchall()}
+                total_amount = totals.get(year, {}).get('total_amount', 0) or 0
+                total_profit = totals.get(year, {}).get('total_profit', 0) or 0
+
+                # 3. Obtener resumen de ventas por producto para el año
+                await cursor.execute(GET_PRODUCTS_SALES_SUMMARY_BY_YEAR(enterprise, year))
+                products = await cursor.fetchall()
+
+                # 4. Calcular porcentajes y clasificaciones
+                # Ordenar por total_amount DESC, luego por descripción
+                products_sorted = sorted(
+                    products,
+                    key=lambda x: (-x['total_amount'], x['description'] if x['total_amount'] == 0 else '')
+                )
+
+                # Calcular sales_percentage y acumulados
+                acc_sales = 0
+                acc_profit = 0
+                for idx, prod in enumerate(products_sorted):
+                    sales_percentage = (
+                        float(prod['total_amount']) / float(total_amount) * 100
+                        if total_amount > 0 else 0
+                    )
+                    profit_percentage = (
+                        float(prod['total_profit']) / float(total_profit) * 100
+                        if total_profit > 0 else 0
+                    )
+                    acc_sales += sales_percentage
+                    acc_profit += profit_percentage
+
+                    # Clasificación ABC para ventas
+                    if acc_sales <= 80:
+                        sold_abc = "A"
+                    elif acc_sales <= 95:
+                        sold_abc = "B"
+                    else:
+                        sold_abc = "C"
+
+                    # Clasificación ABC para utilidad
+                    if acc_profit <= 80:
+                        profit_abc = "A"
+                    elif acc_profit <= 95:
+                        profit_abc = "B"
+                    else:
+                        profit_abc = "C"
+
+                    # Top products
+                    top_products = "AA" if sold_abc == "A" and profit_abc == "A" else None
+
+                    product_abc_records.append({
+                        "product_id": prod['product_id'],
+                        "sales_percentage": round(sales_percentage, 5),
+                        "acc_sales_percentage": round(acc_sales, 5),
+                        "sold_abc": sold_abc,
+                        "profit_percentage": round(profit_percentage, 5),
+                        "acc_profit_percentage": round(acc_profit, 5),
+                        "profit_abc": profit_abc,
+                        "top_products": top_products,
+                        "enterprise": enterprise,
+                        "year": year,
+                        "last_update": datetime.datetime.now(),
+                    })
+
+    return product_abc_records
+
+async def upsert_product_abc(my_pool, product_abc_records):
+    """
+    Inserta o actualiza los registros de ProductABC en la base de datos MySQL.
+    """
+    if not product_abc_records:
+        return 0
+
+    my_query = UPSERT_PRODUCT_ABC()
+
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(my_query, product_abc_records)
+        await conn.commit()
+    return len(product_abc_records)
+
+
+
 
 ### Enterprises funciona para ir agregando mas empresas y sus respectivos datos de conexion a la base de datos, tomarlo en cuenta al traer los datos
 ### Existe la variable ENV_UPDATE_ALL_DATES que si es True no se toma en cuenta el ultimo año o mes o fecha de actualización y se actualizan todos los registros
