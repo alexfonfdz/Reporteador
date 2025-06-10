@@ -1,11 +1,15 @@
-from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS
-from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
+from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS
+from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
 import asyncpg
 import aiomysql
 from dataclasses import dataclass
 import pandas as pd
 import asyncio
+import warnings
+
+
+warnings.filterwarnings('ignore', module=r"aiomysql")
 
 @dataclass
 class EnterpriseConnectionData:
@@ -192,7 +196,7 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
         if len(pg_results) == 0:
             break
 
-        query_params =  [tuple([*result.values(), schema]) for result in pg_results]
+        query_params =  [tuple([*result.values()]) for result in pg_results]
         
         my_complete_pages = len(pg_results) // MAX_MYSQL_QUERIES_PER_REQUEST
         my_reminder_page = len(pg_results) % MAX_MYSQL_QUERIES_PER_REQUEST
@@ -224,7 +228,14 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
 
 
 async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+    """Upserts movements on the application database after requesting admintotal's postgres database.
+    This function request products in chunks of 200MB and each of them is inserted in chunks of 4MB.
 
+    Return
+    ------
+    int
+        Number of affected rows in the application database
+    """
     #The limit for us is 200MB but we have to transform it to bytes for further operations
     MAX_QUERY_WEIGHT_IN_RAM=200 * (1024 ** 2)
 
@@ -291,6 +302,83 @@ async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema
 
     return my_affected_rows
 
+async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+    """Upserts movement details on the application database after requesting admintotal's postgres database.
+    This function request products in chunks of 200MB and each of them is inserted in chunks of 4MB.
+
+    Return
+    ------
+    int
+        Number of affected rows in the application database
+    """
+     #The limit for us is 200MB but we have to transform it to bytes for further operations
+    MAX_QUERY_WEIGHT_IN_RAM=200 * (1024 ** 2)
+
+    #For estimating the row size for each returned field in the query we have to look at the sizes given by python
+    #28 bytes on ints, 48 on datetime objects, 1 string with 49 as overhead and length 100,
+    #1 boolean, 9 numeric values with lenght of 100 and an overhead of 248 bytes in Record instances
+
+    #For further research use the pympler package
+
+    #(3 ints) + (1 datetime) + (1 string of 100 char) + (1 boolean) + (9 numerics) + Record overhead
+    ESTIMATED_ROW_SIZE = ((28 * 5) + 48 + (149) + (28)+ (100 * 9) + 248) * 1.1
+
+    ESTIMATED_LIMIT_OF_ROWS = int(MAX_QUERY_WEIGHT_IN_RAM // ESTIMATED_ROW_SIZE) 
+
+
+    MAX_MYSQL_QUERIES_PER_REQUEST = 200_000
+
+    pg_current_page = 0
+    pg_results = []
+
+    my_affected_rows = 0
+    my_query = UPSERT_MOVEMENT_DETAILS(schema)
+
+    while True:
+        async with pg_pool.acquire() as pg_conn:
+            pg_query = SELECT_MOVEMENT_DETAILS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page)
+            )
+
+            pg_results = await pg_conn.fetch(pg_query)
+
+        if len(pg_results) == 0:
+            break
+
+        query_params =  [tuple([*result.values()]) for result in pg_results]
+        
+        my_complete_pages = len(pg_results) // MAX_MYSQL_QUERIES_PER_REQUEST
+        my_reminder_page = len(pg_results) % MAX_MYSQL_QUERIES_PER_REQUEST
+
+
+        async with my_pool.acquire() as my_conn:
+            async with my_conn.cursor() as cursor:
+                for pagenum in range (my_complete_pages):
+                    page = query_params[(pagenum * MAX_MYSQL_QUERIES_PER_REQUEST):((pagenum + 1) * MAX_MYSQL_QUERIES_PER_REQUEST)]
+
+                    await cursor.executemany(my_query, page)
+                    my_affected_rows += cursor.rowcount
+
+                if my_reminder_page:
+                    await cursor.executemany(
+                        my_query,
+                        query_params[(my_complete_pages * MAX_MYSQL_QUERIES_PER_REQUEST):]
+                    )
+                    my_affected_rows += cursor.rowcount
+
+            await my_conn.commit()
+        
+        if len(pg_results) < ESTIMATED_LIMIT_OF_ROWS:
+            break
+
+        pg_current_page += 1
+
+    return my_affected_rows
+
+
+
    
 
 
@@ -339,14 +427,19 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
             )
         )
 
+    affected_products = await upsert_products(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+
+    affected_movements = await upsert_movements(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+ 
+    affected_movement_details = await upsert_movement_details(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+
     for task in tasks:
         print(f'Result on task {task.get_name()}: {task.result()}')
 
-    affected_products = await upsert_products(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
     print(f'Products affected: {affected_products}')
-
-    affected_movements = await upsert_movements(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
     print(f'Movements affected: {affected_movements}')
+    print(f'Movement details affected: {affected_movement_details}')
+
 
 
 

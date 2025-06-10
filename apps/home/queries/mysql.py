@@ -40,7 +40,7 @@ VALUES (%s, %s, %s, %s,
     (SELECT id FROM brand WHERE id_admin = %s AND enterprise = '{enterprise}'),
     (SELECT id FROM family WHERE id_admin = %s AND enterprise = '{enterprise}'),
     (SELECT id FROM subfamily WHERE id_admin = %s AND enterprise = '{enterprise}'),
-    %s
+    '{enterprise}'
 )
 ON DUPLICATE KEY UPDATE 
     description=VALUES(description), code=VALUES(code),
@@ -61,3 +61,19 @@ INSERT IGNORE INTO movements (
 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'{enterprise}');
 """
     )
+
+def UPSERT_MOVEMENT_DETAILS(enterprise: str):
+    return (
+f"""
+INSERT IGNORE INTO movements_detail (
+    id_admin, movement_id, product_id, movement_detail_date, um, quantity, um_factor, unitary_price,
+    total_quantity, amount, iva, discount, existence, cost_of_sale, canceled, enterprise
+)
+VALUES (
+    %s, 
+    (SELECT id from movements WHERE id_admin = %s AND enterprise = '{enterprise}'),
+    (SELECT id from product WHERE id_admin = %s AND enterprise = '{enterprise}'),
+    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '{enterprise}'
+);
+"""
+)

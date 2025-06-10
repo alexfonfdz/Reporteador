@@ -92,3 +92,24 @@ def SELECT_MOVEMENTS(schema: str, limit: int, offset: int):
         OFFSET {offset};
 """
 
+def SELECT_MOVEMENT_DETAILS(schema: str, limit: int, offset: int):
+    return f"""
+SELECT md.id, md.movimiento_id, md.producto_id, md.fecha, um.nombre, 
+ 	  md.cantidad, md.factor_um, md.precio_unitario,
+ 	  CASE
+          WHEN ROUND(SUM(md.cantidad*md.factor_um), 5) IS NULL THEN 0 
+          ELSE ROUND(SUM(md.cantidad*md.factor_um), 5)
+       END AS cantidad_total,
+ 	  md.importe, md.iva, md.descuento, md.existencia, md.costo_venta, md.cancelado
+FROM 
+    {schema}.admintotal_movimientodetalle md
+ 	 LEFT JOIN
+    {schema}.admintotal_um um 
+	  	ON um.id = md.um_id
+GROUP BY
+ 	md.id,
+ 	um.nombre
+ORDER BY md.id
+LIMIT {limit}
+OFFSET {offset};
+"""
