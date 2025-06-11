@@ -119,6 +119,9 @@ class ProductABC(models.Model):
 
 class AnalysisABC(models.Model):
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_analysis')
+    family = models.ForeignKey(Family, on_delete=models.PROTECT, related_name='abc_analysis')
+    subfamily = models.ForeignKey(SubFamily, on_delete=models.PROTECT, related_name='abc_analysis')
+
 
     total_amount = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     profit = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
@@ -199,7 +202,7 @@ class AnalysisABC(models.Model):
         verbose_name = "Analysis ABC"
         verbose_name_plural = "Analysis ABCs"
         constraints = [
-            models.UniqueConstraint(fields=['catalog', 'enterprise', 'year'], name='analysis_abc_unique_idx')
+            models.UniqueConstraint(fields=['catalog', 'family', 'subfamily', 'enterprise', 'year'], name='analysis_abc_unique_idx')
         ]
 
 class Movements(models.Model):

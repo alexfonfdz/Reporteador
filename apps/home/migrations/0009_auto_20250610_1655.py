@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='analysisabc',
-            constraint=models.UniqueConstraint(fields=('catalog', 'enterprise', 'year'), name='analysis_abc_unique_idx'),
+            constraint=models.UniqueConstraint(fields=('catalog', 'family', 'subfamily', 'enterprise', 'year'), name='analysis_abc_unique_idx'),
         ),
         migrations.AddConstraint(
             model_name='productabc',

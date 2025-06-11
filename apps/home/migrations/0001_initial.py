@@ -175,6 +175,9 @@ class Migration(migrations.Migration):
                 ('year', models.IntegerField()),
                 ('last_update', models.DateTimeField(blank=True, null=True)),
                 ('catalog', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='abc_analysis', to='home.catalog')),
+                ('family', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='abc_analysis', to='home.family')),
+                ('subfamily', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='abc_analysis', to='home.subfamily')),
+ 
             ],
             options={
                 'verbose_name': 'Analysis ABC',
