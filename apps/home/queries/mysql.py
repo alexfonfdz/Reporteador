@@ -52,20 +52,28 @@ ON DUPLICATE KEY UPDATE
 def UPSERT_MOVEMENTS(enterprise: str):
     return (
 f"""
-INSERT IGNORE INTO movements (
+INSERT INTO movements (
     id_admin, movement_date, is_order, is_input, is_output, pending, folio, serie,
     aditional_folio, paid, payment_method, quantity, total_quantity, amount, iva,
     discount, amount_discount, total, cost_of_sale, profit, currency, order_id_admin,
     movement_type, canceled, enterprise
 )
-VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'{enterprise}');
+VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'{enterprise}')
+ON DUPLICATE KEY UPDATE
+movement_date=VALUES(movement_date), is_order=VALUES(is_order), is_input=VALUES(is_input), is_output=VALUES(is_output),
+pending=VALUES(pending), folio=VALUES(folio), serie=VALUES(serie),aditional_folio=VALUES(aditional_folio),
+paid=VALUES(paid), payment_method=VALUES(payment_method), quantity=VALUES(quantity),
+total_quantity=VALUES(total_quantity), amount=VALUES(amount), iva=VALUES(iva),discount=VALUES(discount),
+amount_discount=VALUES(amount_discount), total=VALUES(total), cost_of_sale=VALUES(cost_of_sale),
+profit=VALUES(profit), currency=VALUES(currency), order_id_admin=VALUES(order_id_admin),
+movement_type=VALUES(movement_type), canceled=VALUES(canceled);
 """
     )
 
 def UPSERT_MOVEMENT_DETAILS(enterprise: str):
     return (
 f"""
-INSERT IGNORE INTO movements_detail (
+INSERT INTO movements_detail (
     id_admin, movement_id, product_id, movement_detail_date, um, quantity, um_factor, unitary_price,
     total_quantity, amount, iva, discount, existence, cost_of_sale, canceled, enterprise
 )
@@ -74,9 +82,30 @@ VALUES (
     (SELECT id from movements WHERE id_admin = %s AND enterprise = '{enterprise}'),
     (SELECT id from product WHERE id_admin = %s AND enterprise = '{enterprise}'),
     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '{enterprise}'
-);
+)
+ON DUPLICATE KEY UPDATE
+movement_id=VALUES(movement_id), product_id=VALUES(product_id), movement_detail_date=VALUES(movement_detail_date),
+um=VALUES(um), quantity=VALUES(quantity), um_factor=VALUES(um_factor), unitary_price=VALUES(unitary_price),
+total_quantity=VALUES(total_quantity), amount=VALUES(amount), iva=VALUES(iva), discount=VALUES(discount),
+existence=VALUES(existence), cost_of_sale=VALUES(cost_of_sale), canceled=VALUES(canceled);
 """
 )
+
+def INSERT_TABLE_UPDATE(enterprise: str):
+    return (f"""
+INSERT INTO table_update (table_name, affected_rows, enterprise, created_at)
+VALUES (%s, %s, '{enterprise}', NOW())
+""")
+
+def GET_MOST_RECENT_UPDATE_UTC(enterprise: str):
+    return (f"""
+SELECT CONVERT_TZ(most_recent.update_date, @@global.time_zone, 'UTC') AS update_date 
+FROM (
+    SELECT MAX(created_at) AS update_date FROM table_update WHERE enterprise = '{enterprise}' AND table_name = %s
+) AS most_recent;
+"""
+)
+
 
 
 
@@ -208,3 +237,4 @@ ORDER BY
 ;
 """
     )
+

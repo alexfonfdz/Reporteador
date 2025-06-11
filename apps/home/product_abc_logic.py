@@ -1,4 +1,5 @@
-from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL
+from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE
+from datetime import timedelta
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
 import asyncpg
@@ -148,7 +149,7 @@ async def upsert_brands(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:st
 
     return affected
 
-async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str, update_all: bool) -> int:
     """Upserts products on the application database after requesting admintotal's postgres database.
     This function request products in chunks of 200MB and each of them is inserted in chunks of 4MB.
 
@@ -179,33 +180,74 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
 
     my_affected_rows = 0
     my_query = UPSERT_PRODUCTS(schema)
+    update_table_query = INSERT_TABLE_UPDATE(schema)
+
+
+    #Now we seek in our database for the last change we did in the table in UTC
+    most_recent_change_query = GET_MOST_RECENT_UPDATE_UTC(schema)
+
+    most_recent_change = None
+    async with my_pool.acquire() as my_conn:
+        async with my_conn.cursor() as cursor:
+            await cursor.execute(most_recent_change_query, ('product'))
+
+            result = await cursor.fetchone()
+
+            if result is not None and result[0] is not None:
+                most_recent_change = result[0]
+
+
+
+    if most_recent_change is None or update_all:
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query)
+
+        def get_pg_query(offset: int):
+            return SELECT_PRODUCTS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=False
+            )
+    else:
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query, most_recent_change)
+
+        def get_pg_query(offset: int):
+            return SELECT_PRODUCTS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=True
+            )
+
 
     while True:
         async with pg_pool.acquire() as pg_conn:
-            pg_query = SELECT_PRODUCTS(
-                schema,
-                limit=ESTIMATED_LIMIT_OF_ROWS,
-                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page)
+            pg_query = get_pg_query(
+                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page),
             )
 
-            pg_results = await pg_conn.fetch(pg_query)
+            pg_results = await get_results(pg_conn, pg_query)
 
         if len(pg_results) == 0:
             break
 
         query_params =  [tuple([*result.values()]) for result in pg_results]
-        
+
         my_complete_pages = len(pg_results) // MAX_MYSQL_QUERIES_PER_REQUEST
         my_reminder_page = len(pg_results) % MAX_MYSQL_QUERIES_PER_REQUEST
 
 
         async with my_pool.acquire() as my_conn:
+            transaction_count = 0
             async with my_conn.cursor() as cursor:
                 for pagenum in range (my_complete_pages):
                     page = query_params[(pagenum * MAX_MYSQL_QUERIES_PER_REQUEST):((pagenum + 1) * MAX_MYSQL_QUERIES_PER_REQUEST)]
 
                     await cursor.executemany(my_query, page)
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
 
                 if my_reminder_page:
                     await cursor.executemany(
@@ -213,6 +255,9 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
                         query_params[(my_complete_pages * MAX_MYSQL_QUERIES_PER_REQUEST):]
                     )
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
+                if transaction_count:
+                    await cursor.execute(update_table_query,('product', transaction_count))
 
             await my_conn.commit()
         
@@ -224,7 +269,7 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
     return my_affected_rows
 
 
-async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str, update_all: bool) -> int:
     """Upserts movements on the application database after requesting admintotal's postgres database.
     This function request products in chunks of 200MB and each of them is inserted in chunks of 4MB.
 
@@ -255,16 +300,57 @@ async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema
 
     my_affected_rows = 0
     my_query = UPSERT_MOVEMENTS(schema)
+    update_table_query = INSERT_TABLE_UPDATE(schema)
+
+    #Now we seek in our database for the last change we did in the table in UTC
+    most_recent_change_query = GET_MOST_RECENT_UPDATE_UTC(schema)
+
+    most_recent_change = None
+    async with my_pool.acquire() as my_conn:
+        async with my_conn.cursor() as cursor:
+            await cursor.execute(most_recent_change_query, ('movements'))
+
+            result = await cursor.fetchone()
+
+            if result is not None and result[0] is not None:
+                most_recent_change = result[0]
+
+
+    if most_recent_change is None or update_all:
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query)
+
+        def get_pg_query(offset: int):
+            return SELECT_MOVEMENTS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=False
+            )
+    else:
+
+        valid_days_to_change_a_movement = timedelta(days=5)
+        most_recent_change -= valid_days_to_change_a_movement
+
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query, most_recent_change)
+
+        def get_pg_query(offset: int):
+            return SELECT_MOVEMENTS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=True
+            )
+
 
     while True:
         async with pg_pool.acquire() as pg_conn:
-            pg_query = SELECT_MOVEMENTS(
-                schema,
-                limit=ESTIMATED_LIMIT_OF_ROWS,
-                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page)
+            pg_query = get_pg_query(
+                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page),
             )
 
-            pg_results = await pg_conn.fetch(pg_query)
+            pg_results = await get_results(pg_conn, pg_query)
 
         if len(pg_results) == 0:
             break
@@ -276,12 +362,14 @@ async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema
 
 
         async with my_pool.acquire() as my_conn:
+            transaction_count = 0
             async with my_conn.cursor() as cursor:
                 for pagenum in range (my_complete_pages):
                     page = query_params[(pagenum * MAX_MYSQL_QUERIES_PER_REQUEST):((pagenum + 1) * MAX_MYSQL_QUERIES_PER_REQUEST)]
 
                     await cursor.executemany(my_query, page)
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
 
                 if my_reminder_page:
                     await cursor.executemany(
@@ -289,8 +377,13 @@ async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema
                         query_params[(my_complete_pages * MAX_MYSQL_QUERIES_PER_REQUEST):]
                     )
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
+
+                if transaction_count:    
+                    await cursor.execute(update_table_query, ('movements', transaction_count))
 
             await my_conn.commit()
+
         
         if len(pg_results) < ESTIMATED_LIMIT_OF_ROWS:
             break
@@ -299,7 +392,7 @@ async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema
 
     return my_affected_rows
 
-async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str) -> int:
+async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str, update_all: bool) -> int:
     """Upserts movement details on the application database after requesting admintotal's postgres database.
     This function request products in chunks of 200MB and each of them is inserted in chunks of 4MB.
 
@@ -330,16 +423,58 @@ async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool,
 
     my_affected_rows = 0
     my_query = UPSERT_MOVEMENT_DETAILS(schema)
+    update_table_query = INSERT_TABLE_UPDATE(schema)
+
+    #Now we seek in our database for the last change we did in the table in UTC
+    most_recent_change_query = GET_MOST_RECENT_UPDATE_UTC(schema)
+
+    most_recent_change = None
+    async with my_pool.acquire() as my_conn:
+        async with my_conn.cursor() as cursor:
+            await cursor.execute(most_recent_change_query, ('movements_detail'))
+
+            result = await cursor.fetchone()
+
+            if result is not None and result[0] is not None:
+                most_recent_change = result[0]
+
+
+    if most_recent_change is None or update_all:
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query)
+
+        def get_pg_query(offset: int):
+            return SELECT_MOVEMENT_DETAILS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=False
+            )
+    else:
+
+        valid_days_to_change_a_movement = timedelta(days=5)
+        most_recent_change -= valid_days_to_change_a_movement
+
+        async def get_results(conn: asyncpg.Connection, query: str):
+            return await conn.fetch(query, most_recent_change)
+
+        def get_pg_query(offset: int):
+            return SELECT_MOVEMENT_DETAILS(
+                schema,
+                limit=ESTIMATED_LIMIT_OF_ROWS,
+                offset=offset,
+                with_date=True
+            )
+
+
 
     while True:
         async with pg_pool.acquire() as pg_conn:
-            pg_query = SELECT_MOVEMENT_DETAILS(
-                schema,
-                limit=ESTIMATED_LIMIT_OF_ROWS,
-                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page)
+            pg_query = get_pg_query(
+                offset=(ESTIMATED_LIMIT_OF_ROWS * pg_current_page),
             )
 
-            pg_results = await pg_conn.fetch(pg_query)
+            pg_results = await get_results(pg_conn, pg_query)
 
         if len(pg_results) == 0:
             break
@@ -351,12 +486,14 @@ async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool,
 
 
         async with my_pool.acquire() as my_conn:
+            transaction_count = 0
             async with my_conn.cursor() as cursor:
                 for pagenum in range (my_complete_pages):
                     page = query_params[(pagenum * MAX_MYSQL_QUERIES_PER_REQUEST):((pagenum + 1) * MAX_MYSQL_QUERIES_PER_REQUEST)]
 
                     await cursor.executemany(my_query, page)
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
 
                 if my_reminder_page:
                     await cursor.executemany(
@@ -364,6 +501,10 @@ async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool,
                         query_params[(my_complete_pages * MAX_MYSQL_QUERIES_PER_REQUEST):]
                     )
                     my_affected_rows += cursor.rowcount
+                    transaction_count += cursor.rowcount
+
+                if transaction_count:
+                    await cursor.execute(update_table_query, ('movements_detail', transaction_count))
 
             await my_conn.commit()
         
@@ -424,17 +565,34 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
             )
         )
 
-    affected_products = await upsert_products(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+    affected_products = await upsert_products(
+        pg_pool=pg_pool,
+        my_pool=my_pool,
+        schema=connection_data.schema,
+        update_all=False
+    )
 
-    affected_movements = await upsert_movements(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
- 
-    affected_movement_details = await upsert_movement_details(pg_pool=pg_pool, my_pool=my_pool, schema=connection_data.schema)
+    affected_movements = await upsert_movements(
+        pg_pool=pg_pool,
+        my_pool=my_pool,
+        schema=connection_data.schema,
+        update_all=False
+    )
+
+    affected_movement_details = await upsert_movement_details(
+        pg_pool=pg_pool,
+        my_pool=my_pool,
+        schema=connection_data.schema,
+        update_all=False
+    )
 
     for task in tasks:
         print(f'Result on task {task.get_name()}: {task.result()}')
 
     print(f'Products affected: {affected_products}')
     print(f'Movements affected: {affected_movements}')
+    print(f'Movements details affected: {affected_movement_details}')
+
 
 
 

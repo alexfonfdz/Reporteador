@@ -13,16 +13,24 @@ def SELECT_BRANDS(schema: str):
 SELECT nombre, id FROM {schema}.admintotal_productomarca
 """
 
-def SELECT_PRODUCTS(schema: str, limit: int, offset: int):
+def SELECT_PRODUCTS(schema: str, limit: int, offset: int, with_date: bool):
+
+    date_clause = "AND (p.creado AT TIME ZONE 'UTC' > $1 OR p.modificado AT TIME ZONE 'UTC' > $1)" if with_date else ""
+
     return f"""
 SELECT p.id, p.codigo, p.descripcion, p.creado, p.marca_id, p.linea_id, p.sublinea_id
 FROM {schema}.admintotal_producto as p
-WHERE p.creado IS NOT NULL
+WHERE 
+    p.creado IS NOT NULL
+    {date_clause} 
 ORDER BY p.id
 LIMIT {limit} OFFSET {offset};
 """
 
-def SELECT_MOVEMENTS(schema: str, limit: int, offset: int):
+def SELECT_MOVEMENTS(schema: str, limit: int, offset: int, with_date: bool):
+    
+    date_clause = "WHERE (p.fecha AT TIME ZONE 'UTC') > $1" if with_date else ""
+
     return f"""
  SELECT m.poliza_ptr_id, p.fecha,
  	   m.es_orden, m.es_entrada, m.es_salida, m.pendiente, 
@@ -76,6 +84,7 @@ def SELECT_MOVEMENTS(schema: str, limit: int, offset: int):
         {schema}.admintotal_movimientodetalle md ON md.movimiento_id = m.poliza_ptr_id
  	   LEFT JOIN
         {schema}.admintotal_moneda mx ON mx.id = m.moneda_id
+        {date_clause}
  	   GROUP BY
  	   		m.poliza_ptr_id,
  			p.fecha,
@@ -92,7 +101,10 @@ def SELECT_MOVEMENTS(schema: str, limit: int, offset: int):
         OFFSET {offset};
 """
 
-def SELECT_MOVEMENT_DETAILS(schema: str, limit: int, offset: int):
+def SELECT_MOVEMENT_DETAILS(schema: str, limit: int, offset: int, with_date: bool):
+
+    date_clause = "WHERE (md.fecha AT TIME ZONE 'UTC') > $1" if with_date else ""
+
     return f"""
 SELECT md.id, md.movimiento_id, md.producto_id, md.fecha, um.nombre, 
  	  md.cantidad, md.factor_um, md.precio_unitario,
@@ -106,6 +118,7 @@ FROM
  	 LEFT JOIN
     {schema}.admintotal_um um 
 	  	ON um.id = md.um_id
+{date_clause}
 GROUP BY
  	md.id,
  	um.nombre

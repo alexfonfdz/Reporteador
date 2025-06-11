@@ -264,4 +264,18 @@ class MovementsDetail(models.Model):
             models.UniqueConstraint(fields=['id_admin', 'enterprise'], name='enterprise_id_admin_movement_details_unique_idx')
         ]
 
+class TableUpdate(models.Model):
+    table_name = models.CharField(max_length=255, unique=False, blank=False, null=False)
+    enterprise = models.CharField(max_length=100, blank=False, null=False)
+    created_at = models.DateTimeField()
+    affected_rows = models.IntegerField()
+    created_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "table_update"
+        verbose_name = "Table Update"
+        verbose_name_plural = "Tables Updates"
+        indexes=[
+            models.Index(fields=['enterprise', 'table_name'], name="enterprise__table_name_idx")
+        ]
 
