@@ -282,3 +282,50 @@ class TableUpdate(models.Model):
             models.Index(fields=['enterprise', 'table_name'], name="enterprise__table_name_idx")
         ]
 
+class ReportConfiguration(models.Model):
+    from_date = models.DateTimeField()
+    to_date = models.DateTimeField()
+
+    report_name = models.CharField(max_length=100, blank=False, null=False)
+    enterprise = models.CharField(max_length=100, blank=False, null=False)
+    
+    family = models.ForeignKey(
+        Family,
+        on_delete=models.PROTECT,
+        related_name='report_configuration',
+        null=True,
+        blank=True
+    )
+    subfamily = models.ForeignKey(
+        SubFamily,
+        on_delete=models.PROTECT,
+        related_name='report_configuration',
+        null=True,
+        blank=True
+    )
+    brand = models.ForeignKey(
+        Brand,
+        on_delete=models.PROTECT,
+        related_name='report_configuration',
+        null=True,
+        blank=True
+    )
+    catalog = models.ForeignKey(
+        Catalog,
+        on_delete=models.PROTECT,
+        related_name='report_configuration',
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        db_table = "report_configuration"
+        verbose_name = "Report Configuration"
+        verbose_name_plural = "Reports Configurations"
+        indexes = [
+            models.Index(fields=['enterprise'], name="enterprise__idx")
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['enterprise', 'report_name'], name="enterprise__report_name__unique_idx")
+        ]
+
