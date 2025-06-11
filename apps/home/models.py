@@ -113,6 +113,9 @@ class ProductABC(models.Model):
         db_table = "product_abc"
         verbose_name = "Product ABC"
         verbose_name_plural = "Products ABC"
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'enterprise', 'year'], name='product_abc_unique_idx')
+        ]
 
 class AnalysisABC(models.Model):
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='abc_analysis')
@@ -195,6 +198,9 @@ class AnalysisABC(models.Model):
         db_table = "analysis_abc"
         verbose_name = "Analysis ABC"
         verbose_name_plural = "Analysis ABCs"
+        constraints = [
+            models.UniqueConstraint(fields=['catalog', 'enterprise', 'year'], name='analysis_abc_unique_idx')
+        ]
 
 class Movements(models.Model):
     id_admin = models.IntegerField()
@@ -203,11 +209,11 @@ class Movements(models.Model):
     is_input = models.BooleanField(default=False)
     is_output = models.BooleanField(default=False)
     pending = models.BooleanField(default=False)
-    folio = models.IntegerField()
+    folio = models.IntegerField(null=True, blank=True)
     serie = models.CharField(max_length=250, blank=True, null=True)
     aditional_folio = models.CharField(max_length=250, blank=True, null=True)
     paid = models.BooleanField(default=False)
-    payment_method = models.CharField(max_length=250)
+    payment_method = models.CharField(max_length=250, null=True, blank=True)
     quantity = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     total_quantity = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     amount = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
@@ -217,7 +223,7 @@ class Movements(models.Model):
     total = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     cost_of_sale = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     profit = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
-    currency = models.CharField(max_length=100, unique=False, blank=True)
+    currency = models.CharField(max_length=100, unique=False, blank=True, null=True)
     order_id_admin = models.IntegerField(null=True, blank=True)
     movement_type = models.IntegerField()
     canceled = models.BooleanField(default=False)
@@ -237,7 +243,7 @@ class MovementsDetail(models.Model):
     movement = models.ForeignKey(Movements, on_delete=models.PROTECT, related_name='details')
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='movement_details', null=True, blank=True)
     movement_detail_date = models.DateTimeField()
-    um = models.CharField(max_length=100, unique=False, blank=True)
+    um = models.CharField(max_length=100, unique=False, blank=True, null=True)
     quantity = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     um_factor = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)
     unitary_price = models.DecimalField(max_digits=25, decimal_places=5, default=0, null=True, blank=True)

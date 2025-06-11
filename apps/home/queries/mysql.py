@@ -110,9 +110,15 @@ SELECT
     p.code,
     p.description,
     p.create_date,
-    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END), 0) AS total_amount,
-    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END), 0) AS total_profit,
-    IFNULL(SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END), 0) AS total_quantity
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END)
+    END AS total_amount,
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END)
+    END AS total_profit,
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END)
+    END AS total_quantity
 FROM product p
 LEFT JOIN movements_detail md
     ON md.product_id = p.id
@@ -123,7 +129,7 @@ WHERE p.enterprise = '{enterprise}'
 GROUP BY p.id, p.code, p.description, p.create_date
 ORDER BY
     total_amount DESC,
-    CASE WHEN total_amount = 0 THEN p.description ELSE NULL END ASC
+    CASE WHEN total_amount IS NULL THEN p.description ELSE NULL END ASC
 ;
 """
     )
@@ -152,4 +158,53 @@ def UPSERT_PRODUCT_ABC():
         last_update=VALUES(last_update)
     ;
     """
+    )
+
+def GET_DISTINCT_YEARS_MOVEMENTS_ALL():
+    return (
+    f"""
+SELECT DISTINCT YEAR(movement_date) AS year
+FROM movements;
+"""
+    )
+
+def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL():
+    return (
+    f"""
+SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
+SUM(amount-(cost_of_sale * quantity)) AS total_profit
+FROM movements_detail
+GROUP BY YEAR(movement_detail_date)
+ORDER BY YEAR(movement_detail_date) DESC;
+"""
+    )
+
+def GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL(year: int):
+    return (
+    f"""
+SELECT
+    p.id AS product_id,
+    p.code,
+    p.description,
+    p.create_date,
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.amount ELSE 0 END)
+    END AS total_amount,
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN (md.amount - (md.cost_of_sale * md.quantity)) ELSE 0 END)
+    END AS total_profit,
+    CASE WHEN SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END) = 0 THEN NULL
+         ELSE SUM(CASE WHEN YEAR(md.movement_detail_date) = {year} THEN md.quantity ELSE 0 END)
+    END AS total_quantity
+FROM product p
+LEFT JOIN movements_detail md
+    ON md.product_id = p.id
+    AND YEAR(md.movement_detail_date) = {year}
+WHERE YEAR(p.create_date) <= {year}
+GROUP BY p.id, p.code, p.description, p.create_date
+ORDER BY
+    total_amount DESC,
+    CASE WHEN total_amount IS NULL THEN p.description ELSE NULL END ASC
+;
+"""
     )

@@ -1,4 +1,4 @@
-from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC
+from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
 import asyncpg
@@ -452,6 +452,15 @@ async def calculate_product_abc(my_pool, enterprise: str):
             await cursor.execute(GET_DISTINCT_YEARS_MOVEMENTS(enterprise))
             years = [row['year'] for row in await cursor.fetchall()]
 
+            # Si no se actualiza todo, obtener last_update por producto y año
+            years_to_update = set(years)
+            last_updates = {}
+            if not ENV_UPDATE_ALL_DATES:
+                await cursor.execute(
+                    "SELECT product_id, year, last_update FROM product_abc WHERE enterprise=%s", (enterprise,)
+                )
+                last_updates = {(row['product_id'], row['year']): row['last_update'] for row in await cursor.fetchall()}
+
             for year in years:
                 # 2. Obtener el total de ventas y utilidad del año
                 await cursor.execute(GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR(enterprise))
@@ -464,44 +473,57 @@ async def calculate_product_abc(my_pool, enterprise: str):
                 products = await cursor.fetchall()
 
                 # 4. Calcular porcentajes y clasificaciones
-                # Ordenar por total_amount DESC, luego por descripción
-                products_sorted = sorted(
-                    products,
-                    key=lambda x: (-x['total_amount'], x['description'] if x['total_amount'] == 0 else '')
+                products_with_sales = [p for p in products if p['total_amount'] not in (None, 0)]
+                products_no_sales = [p for p in products if p['total_amount'] in (None, 0)]
+
+                products_with_sales_sorted = sorted(
+                    products_with_sales,
+                    key=lambda x: -x['total_amount']
+                )
+                products_no_sales_sorted = sorted(
+                    products_no_sales,
+                    key=lambda x: x['description']
                 )
 
-                # Calcular sales_percentage y acumulados
+                products_sorted = products_with_sales_sorted + products_no_sales_sorted
+
                 acc_sales = 0
                 acc_profit = 0
-                for idx, prod in enumerate(products_sorted):
-                    sales_percentage = (
-                        float(prod['total_amount']) / float(total_amount) * 100
-                        if total_amount > 0 else 0
-                    )
-                    profit_percentage = (
-                        float(prod['total_profit']) / float(total_profit) * 100
-                        if total_profit > 0 else 0
-                    )
-                    acc_sales += sales_percentage
-                    acc_profit += profit_percentage
+                for prod in products_sorted:
+                    # Si no se actualiza todo, verifica si ya está actualizado
+                    if not ENV_UPDATE_ALL_DATES:
+                        last_update = last_updates.get((prod['product_id'], year))
+                        # Solo actualiza si el año de last_update es igual al año actual
+                        if last_update and hasattr(last_update, 'year') and last_update.year != year:
+                            continue
 
-                    # Clasificación ABC para ventas
-                    if acc_sales <= 80:
-                        sold_abc = "A"
-                    elif acc_sales <= 95:
-                        sold_abc = "B"
-                    else:
+                    if prod['total_amount'] in (None, 0):
+                        sales_percentage = 0
+                        profit_percentage = 0
+                        acc_sales = 100
+                        acc_profit = 100
                         sold_abc = "C"
-
-                    # Clasificación ABC para utilidad
-                    if acc_profit <= 80:
-                        profit_abc = "A"
-                    elif acc_profit <= 95:
-                        profit_abc = "B"
-                    else:
                         profit_abc = "C"
+                    else:
+                        sales_percentage = float(prod['total_amount'] or 0) / float(total_amount) * 100 if total_amount > 0 else 0
+                        profit_percentage = float(prod['total_profit'] or 0) / float(total_profit) * 100 if total_profit > 0 else 0
+                        acc_sales += sales_percentage
+                        acc_profit += profit_percentage
 
-                    # Top products
+                        if acc_sales <= 80:
+                            sold_abc = "A"
+                        elif acc_sales <= 95:
+                            sold_abc = "B"
+                        else:
+                            sold_abc = "C"
+
+                        if acc_profit <= 80:
+                            profit_abc = "A"
+                        elif acc_profit <= 95:
+                            profit_abc = "B"
+                        else:
+                            profit_abc = "C"
+
                     top_products = "AA" if sold_abc == "A" and profit_abc == "A" else None
 
                     product_abc_records.append({
@@ -518,7 +540,101 @@ async def calculate_product_abc(my_pool, enterprise: str):
                         "last_update": datetime.datetime.now(),
                     })
 
+    # Solo upsert los registros que cumplen la condición de actualización
+    if product_abc_records:
+        await upsert_product_abc(my_pool, product_abc_records)
+
+    # Siempre calcula y actualiza para la empresa "TODO"
+    await calculate_product_abc_todo(my_pool)
+
     return product_abc_records
+
+async def calculate_product_abc_todo(my_pool):
+    product_abc_records = []
+
+    async with my_pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            # Obtener todos los años con movimientos (sin filtrar por empresa)
+            await cursor.execute(GET_DISTINCT_YEARS_MOVEMENTS_ALL())
+            years = [row['year'] for row in await cursor.fetchall()]
+
+            for year in years:
+                # Totales del año
+                await cursor.execute(GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL())
+                totals = {row['year']: row for row in await cursor.fetchall()}
+                total_amount = totals.get(year, {}).get('total_amount', 0) or 0
+                total_profit = totals.get(year, {}).get('total_profit', 0) or 0
+
+                # Productos del año
+                await cursor.execute(GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL(year))
+                products = await cursor.fetchall()
+
+                # Separar productos con ventas y sin ventas
+                products_with_sales = [p for p in products if (p.get('total_amount') or 0) > 0]
+                products_no_sales = [p for p in products if not (p.get('total_amount') or 0)]
+
+                # Ordenar ambos grupos
+                products_with_sales_sorted = sorted(
+                    products_with_sales,
+                    key=lambda x: -(x.get('total_amount') or 0)
+                )
+                products_no_sales_sorted = sorted(
+                    products_no_sales,
+                    key=lambda x: x.get('description') or ''
+                )
+
+                # Concatenar para el orden final
+                products_sorted = products_with_sales_sorted + products_no_sales_sorted
+
+                acc_sales = 0
+                acc_profit = 0
+                for prod in products_sorted:
+                    total_amount_val = prod.get('total_amount') or 0
+                    total_profit_val = prod.get('total_profit') or 0
+                    if total_amount_val == 0:
+                        sales_percentage = 0
+                        profit_percentage = 0
+                        acc_sales = 100
+                        acc_profit = 100
+                        sold_abc = "C"
+                        profit_abc = "C"
+                    else:
+                        sales_percentage = float(total_amount_val) / float(total_amount) * 100 if total_amount > 0 else 0
+                        profit_percentage = float(total_profit_val) / float(total_profit) * 100 if total_profit > 0 else 0
+                        acc_sales += sales_percentage
+                        acc_profit += profit_percentage
+
+                        if acc_sales <= 80:
+                            sold_abc = "A"
+                        elif acc_sales <= 95:
+                            sold_abc = "B"
+                        else:
+                            sold_abc = "C"
+
+                        if acc_profit <= 80:
+                            profit_abc = "A"
+                        elif acc_profit <= 95:
+                            profit_abc = "B"
+                        else:
+                            profit_abc = "C"
+
+                    top_products = "AA" if sold_abc == "A" and profit_abc == "A" else None
+
+                    product_abc_records.append({
+                        "product_id": prod['product_id'],
+                        "sales_percentage": round(sales_percentage, 5),
+                        "acc_sales_percentage": round(acc_sales, 5),
+                        "sold_abc": sold_abc,
+                        "profit_percentage": round(profit_percentage, 5),
+                        "acc_profit_percentage": round(acc_profit, 5),
+                        "profit_abc": profit_abc,
+                        "top_products": top_products,
+                        "enterprise": "TODO",
+                        "year": year,
+                        "last_update": datetime.datetime.now(),
+                    })
+
+    await upsert_product_abc(my_pool, product_abc_records)
 
 async def upsert_product_abc(my_pool, product_abc_records):
     """

@@ -6,7 +6,15 @@ Copyright (c) 2019 - present AppSeed.us
 from asyncpg.connection import asyncio
 from decouple import os
 from django.test import TestCase
-from apps.home.product_abc_logic import refresh_data
+from apps.home.product_abc_logic import refresh_data, calculate_product_abc
+import aiomysql
+from core.settings import (
+    ENV_MYSQL_USER,
+    ENV_MYSQL_HOST,
+    ENV_MYSQL_PORT,
+    ENV_MYSQL_PASSWORD,
+    ENV_MYSQL_NAME
+)
 
 # Create your tests here.
 
@@ -23,6 +31,28 @@ class TestInsertingLogic(TestCase):
                 catalog_name_column=catalog_column_name
             )
         )
+
+class TestCalculateProductABC(TestCase):
+
+    def test_a_calculate_product_abc(self):
+
+        async def run_test():
+            my_pool = await aiomysql.create_pool(
+            user=ENV_MYSQL_USER,
+            host=ENV_MYSQL_HOST,
+            port=int(ENV_MYSQL_PORT or 3306),
+            password=ENV_MYSQL_PASSWORD,
+            db=ENV_MYSQL_NAME,
+            minsize=3,
+            maxsize=5
+            )
+
+            await calculate_product_abc(
+                enterprise="MR DIESEL",
+                my_pool=my_pool
+            )
+
+        asyncio.run(run_test())
        
 
 
