@@ -23,12 +23,14 @@ class TestInsertingLogic(TestCase):
     def test_a_refresh_data(self):
         catalog_path = os.path.join('apps', 'static', 'data', 'Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx')
         catalog_column_name = 'Catalogo'
+        product_code_column = 'Codigo'
  
         asyncio.run(
             refresh_data(
                 enterprise="MR DIESEL",
                 catalog_path=catalog_path,
-                catalog_name_column=catalog_column_name
+                catalog_name_column=catalog_column_name,
+                product_code_column=product_code_column
             )
         )
 

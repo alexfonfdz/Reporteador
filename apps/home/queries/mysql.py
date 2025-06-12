@@ -49,6 +49,14 @@ ON DUPLICATE KEY UPDATE
 """
     )
 
+def UPDATE_PRODUCT_CATALOG(enterprise: str):
+    return (
+f"""
+UPDATE product SET catalog_id = (SELECT id FROM catalog WHERE name = %s)
+WHERE enterprise = '{enterprise}' AND code IN %s;
+"""
+)
+
 def UPSERT_MOVEMENTS(enterprise: str):
     return (
 f"""

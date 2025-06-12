@@ -1,4 +1,4 @@
-from apps.home.queries.mysql import UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE, UPSERT_ANALYSIS_ABC
+from apps.home.queries.mysql import UPDATE_PRODUCT_CATALOG, UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE, UPSERT_ANALYSIS_ABC
 from datetime import timedelta
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
@@ -268,6 +268,47 @@ async def upsert_products(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema:
 
     return my_affected_rows
 
+async def upsert_product_catalog(
+        my_pool: aiomysql.Pool,
+        enterprise: str,
+        catalog_path: str,
+        catalog_name_column: str,
+        product_code_column: str
+):
+    """Reads the catalog file and inserts the catalog ids in the application database for each product
+
+    Returns
+    -------
+    int
+        Number of affected rows on the application database. If there was no return on postgres or mysql it returns -1.
+    """
+    catalog_df = pd.read_excel(catalog_path)
+
+    aggregate_fun = lambda x: ','.join(x)
+
+    catalog_products_df = catalog_df.groupby(
+        catalog_name_column,
+        as_index=False
+    ).agg({
+        product_code_column: aggregate_fun
+    })
+
+    query = UPDATE_PRODUCT_CATALOG(enterprise)
+    query_params = [(catalog_name, tuple(products.split(','))) 
+        for catalog_name, products in catalog_products_df.itertuples(index=False, name=None)]
+
+
+    affected_rows = -1
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            await cursor.executemany(query, query_params)
+
+            affected_rows = cursor.rowcount
+
+        await conn.commit()
+
+
+    return affected_rows
 
 async def upsert_movements(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool, schema: str, update_all: bool) -> int:
     """Upserts movements on the application database after requesting admintotal's postgres database.
@@ -520,7 +561,7 @@ async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool,
    
 
 
-async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: str):
+async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: str, product_code_column: str):
     """Fetch families, subfamilies and brands for the schema of a given enterprise in admintotal's postgres and
     inserts them in their respective tables in the application's database
     """
@@ -572,6 +613,14 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
         update_all=False
     )
 
+    affected_product_catalog = await upsert_product_catalog(
+        my_pool=my_pool,
+        enterprise=connection_data.schema,
+        catalog_path=catalog_path,
+        catalog_name_column=catalog_name_column,
+        product_code_column=product_code_column
+    )
+
     affected_movements = await upsert_movements(
         pg_pool=pg_pool,
         my_pool=my_pool,
@@ -590,6 +639,7 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
         print(f'Result on task {task.get_name()}: {task.result()}')
 
     print(f'Products affected: {affected_products}')
+    print(f'Affected product catalog_rows: {affected_product_catalog}')
     print(f'Movements affected: {affected_movements}')
     print(f'Movements details affected: {affected_movement_details}')
 
