@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pandas as pd
 import asyncio
 import datetime
+from collections import defaultdict
 
 @dataclass
 class EnterpriseConnectionData:
@@ -863,15 +864,17 @@ async def upsert_product_abc(my_pool, product_abc_records):
 
 ### Analysis ABC
 async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
+    """
+    Calcula y actualiza la tabla AnalysisABC agrupando por empresa, año, catálogo, familia y subfamilia,
+    siguiendo las reglas de negocio y lógica de actualización descritas.
+    """
     schema = get_schema_from_enterprise(enterprise_or_schema)
     analysis_abc_records = []
     async with my_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
-            print(f"[DEBUG] Entrando a calculate_analysis_abc para schema={schema}")
             # 1. Traer todos los años de movimientos
-            await cursor.execute(GET_DISTINCT_YEARS_MOVEMENTS(schema))
-            years = [row['year'] for row in await cursor.fetchall()]
-            print(f"[DEBUG] Años encontrados: {years}")
+            await cursor.execute("SELECT DISTINCT YEAR(movement_detail_date) AS year FROM movements_detail")
+            years = [row['year'] for row in await cursor.fetchall() if row['year'] is not None]
 
             # 2. Si no se actualiza todo, obtener last_update por agrupación
             last_updates = {}
@@ -884,17 +887,14 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                     (row['catalog_id'], row['family_id'], row['subfamily_id'], row['year']): row['last_update']
                     for row in await cursor.fetchall()
                 }
-                print(f"[DEBUG] last_updates: {last_updates}")
 
             for year in years:
-                print(f"[DEBUG] Procesando año: {year}")
                 # 2.1 Traer todas las agrupaciones válidas para ese año
                 await cursor.execute(
-                    "SELECT catalog_id, family_id, subfamily_id FROM product WHERE enterprise=%s AND YEAR(create_date)<=%s GROUP BY catalog_id, family_id, subfamily_id",
+                    "SELECT DISTINCT catalog_id, family_id, subfamily_id FROM product WHERE enterprise=%s AND YEAR(create_date)<=%s",
                     (schema, year)
                 )
                 groups = await cursor.fetchall()
-                print(f"[DEBUG] Grupos encontrados para año {year}: {groups}")
 
                 for group in groups:
                     catalog_id = group['catalog_id']
@@ -903,53 +903,52 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
 
                     # Ignorar productos sin catalogo, familia o subfamilia
                     if catalog_id is None or family_id is None or subfamily_id is None:
-                        print(f"[DEBUG] Ignorando grupo con catalog_id={catalog_id}, family_id={family_id}, subfamily_id={subfamily_id}")
                         continue
 
                     # 2.2 Si no se actualiza todo, verifica si ya está actualizado
                     if not ENV_UPDATE_ALL_DATES and schema != "TODO":
                         last_update = last_updates.get((catalog_id, family_id, subfamily_id, year))
                         if last_update and hasattr(last_update, 'year') and last_update.year > year:
-                            print(f"[DEBUG] Saltando grupo ya actualizado: {catalog_id}, {family_id}, {subfamily_id}, {year}")
                             continue
 
                     # 3. Calcular los datos agregados
-                    # Total amount
+                    # Total amount, profit, units_sold
                     await cursor.execute(
                         """
-                        SELECT COALESCE(SUM(md.amount),0) as total_amount, 
-                               COALESCE(SUM(md.amount - (md.cost_of_sale * md.quantity)),0) as profit,
-                               COALESCE(SUM(md.quantity),0) as units_sold
+                        SELECT
+                          COALESCE(SUM(md.amount),0) AS total_amount,
+                          COALESCE(SUM(md.amount - (md.cost_of_sale * md.quantity)),0) AS profit,
+                          COALESCE(SUM(md.quantity),0) AS units_sold
                         FROM movements_detail md
-                        JOIN product p ON md.product_id=p.id
-                        WHERE p.catalog_id=%s AND p.family_id=%s AND p.subfamily_id=%s AND p.enterprise=%s AND YEAR(md.movement_detail_date)=%s
+                        JOIN product p ON md.product_id = p.id
+                        WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s
                         """,
                         (catalog_id, family_id, subfamily_id, schema, year)
                     )
                     row = await cursor.fetchone() or {}
-                    total_amount = row.get('total_amount', 0) or 0
-                    profit = row.get('profit', 0) or 0
-                    units_sold = row.get('units_sold', 0) or 0
+                    total_amount = float(row.get('total_amount', 0) or 0)
+                    profit = float(row.get('profit', 0) or 0)
+                    units_sold = float(row.get('units_sold', 0) or 0)
                     profit_percentage = (profit / total_amount * 100) if total_amount else 0
-                    print(f"[DEBUG] Grupo: {catalog_id}, {family_id}, {subfamily_id}, total_amount={total_amount}, profit={profit}, units_sold={units_sold}")
 
                     # Inventario de cierre (unidades y pesos)
                     await cursor.execute(
                         """
-                        SELECT 
-                            COALESCE(SUM(CASE WHEN m.is_input THEN md.quantity ELSE -md.quantity END),0) as inventory_close_u,
-                            COALESCE(SUM(CASE WHEN m.is_input THEN md.quantity*md.cost_of_sale ELSE -md.quantity*md.cost_of_sale END),0) as inventory_close_p
+                        SELECT
+                          COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity WHEN m.is_output = true THEN -md.quantity END),0) AS inventory_close_u,
+                          COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity*md.cost_of_sale WHEN m.is_output = true THEN -md.quantity*md.cost_of_sale END),0) AS inventory_close_p
                         FROM movements_detail md
-                        JOIN movements m ON md.movement_id=m.id
-                        JOIN product p ON md.product_id=p.id
-                        WHERE p.catalog_id=%s AND p.family_id=%s AND p.subfamily_id=%s AND p.enterprise=%s AND YEAR(md.movement_detail_date)<=%s
+                        JOIN movements m ON md.movement_id = m.id
+                        JOIN product p ON md.product_id = p.id
+                        WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) <= %s
                         """,
                         (catalog_id, family_id, subfamily_id, schema, year)
                     )
                     row = await cursor.fetchone() or {}
-                    inventory_close_u = row.get('inventory_close_u', 0) or 0
-                    inventory_close_p = row.get('inventory_close_p', 0) or 0
-                    print(f"[DEBUG] Inventario cierre: u={inventory_close_u}, p={inventory_close_p}")
+                    inventory_close_u = float(row.get('inventory_close_u', 0) or 0)
+                    inventory_close_p = float(row.get('inventory_close_p', 0) or 0)
 
                     # Por mes: ventas y cierre inventario
                     month_sales_u = {}
@@ -959,35 +958,35 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                     for month in range(1, 13):
                         await cursor.execute(
                             """
-                            SELECT 
-                                COALESCE(SUM(md.quantity),0) as month_sale_u,
-                                COALESCE(SUM(md.amount),0) as month_sale_p
+                            SELECT
+                              COALESCE(SUM(md.quantity),0) AS month_sale_u,
+                              COALESCE(SUM(md.amount),0) AS month_sale_p
                             FROM movements_detail md
-                            JOIN product p ON md.product_id=p.id
-                            WHERE p.catalog_id=%s AND p.family_id=%s AND p.subfamily_id=%s AND p.enterprise=%s AND YEAR(md.movement_detail_date)=%s AND MONTH(md.movement_detail_date)=%s
+                            JOIN product p ON md.product_id = p.id
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                              AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s
                             """,
                             (catalog_id, family_id, subfamily_id, schema, year, month)
                         )
                         row = await cursor.fetchone() or {}
-                        month_sales_u[month] = row.get('month_sale_u', 0) or 0
-                        month_sales_p[month] = row.get('month_sale_p', 0) or 0
+                        month_sales_u[month] = float(row.get('month_sale_u', 0) or 0)
+                        month_sales_p[month] = float(row.get('month_sale_p', 0) or 0)
                         await cursor.execute(
                             """
-                            SELECT 
-                                COALESCE(SUM(CASE WHEN m.is_input THEN md.quantity ELSE -md.quantity END),0) as inventory_close_u,
-                                COALESCE(SUM(CASE WHEN m.is_input THEN md.quantity*md.cost_of_sale ELSE -md.quantity*md.cost_of_sale END),0) as inventory_close_p
+                            SELECT
+                                COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity WHEN m.is_output = true THEN -md.quantity END),0) AS inventory_close_u,
+                                COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity*md.cost_of_sale WHEN m.is_output = true THEN -md.quantity*md.cost_of_sale END),0) AS inventory_close_p
                             FROM movements_detail md
-                            JOIN movements m ON md.movement_id=m.id
-                            JOIN product p ON md.product_id=p.id
-                            WHERE p.catalog_id=%s AND p.family_id=%s AND p.subfamily_id=%s AND p.enterprise=%s AND (YEAR(md.movement_detail_date)<%s OR (YEAR(md.movement_detail_date)=%s AND MONTH(md.movement_detail_date)<=%s))
+                            JOIN movements m ON md.movement_id = m.id
+                            JOIN product p ON md.product_id = p.id
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                              AND p.enterprise = %s AND (YEAR(md.movement_detail_date) < %s OR (YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) <= %s))
                             """,
                             (catalog_id, family_id, subfamily_id, schema, year, year, month)
                         )
                         row = await cursor.fetchone() or {}
-                        inventory_close_u_month[month] = row.get('inventory_close_u', 0) or 0
-                        inventory_close_p_month[month] = row.get('inventory_close_p', 0) or 0
-                    print(f"[DEBUG] Meses ventas: {month_sales_u}")
-                    print(f"[DEBUG] Meses inventario cierre: {inventory_close_u_month}")
+                        inventory_close_u_month[month] = float(row.get('inventory_close_u', 0) or 0)
+                        inventory_close_p_month[month] = float(row.get('inventory_close_p', 0) or 0)
 
                     sold_average_month = total_amount / 12 if total_amount else 0
                     profit_average_month = profit / 12 if profit else 0
@@ -1076,44 +1075,55 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                         "profit_abc": None,
                         "top_products": None,
                     })
-            print(f"[DEBUG] analysis_abc_records generados: {len(analysis_abc_records)}")
+
     # Calcular sales_percentage, acc_sales_percentage, sold_abc, acc_profit_percentage, profit_abc, top_products
-    from collections import defaultdict
     grouped = defaultdict(list)
     for rec in analysis_abc_records:
         grouped[(rec['enterprise'], rec['year'])].append(rec)
 
     for (enterprise, year), records in grouped.items():
-        total_amount_sum = sum(r['total_amount'] for r in records)
-        total_profit_sum = sum(r['profit'] for r in records)
-        # Ordena por total_amount desc para ABC de ventas
-        records_sorted = sorted(records, key=lambda r: -r['total_amount'])
-        acc_sales = 0
-        for rec in records_sorted:
-            rec['sales_percentage'] = float(rec['total_amount']) / total_amount_sum * 100 if total_amount_sum > 0 else 0
-            acc_sales += rec['sales_percentage']
-            rec['acc_sales_percentage'] = acc_sales
-            if acc_sales <= 80:
-                rec['sold_abc'] = 'A'
-            elif acc_sales <= 95:
-                rec['sold_abc'] = 'B'
-            else:
-                rec['sold_abc'] = 'C'
-        # Ordena por profit desc para ABC de utilidad
-        records_sorted_profit = sorted(records, key=lambda r: -r['profit'])
-        acc_profit = 0
-        for rec in records_sorted_profit:
-            rec['acc_profit_percentage'] = float(rec['profit']) / total_profit_sum * 100 if total_profit_sum > 0 else 0
-            acc_profit += rec['acc_profit_percentage']
-            if acc_profit <= 80:
-                rec['profit_abc'] = 'A'
-            elif acc_profit <= 95:
-                rec['profit_abc'] = 'B'
-            else:
-                rec['profit_abc'] = 'C'
-            rec['top_products'] = 'AA' if rec['sold_abc'] == 'A' and rec['profit_abc'] == 'A' else None
+        # Ordenar primero los que tienen ventas (total_amount > 0), luego los que no tienen ventas, igual que en product_abc
+        records_with_sales = [r for r in records if r['total_amount'] > 0]
+        records_no_sales = [r for r in records if r['total_amount'] <= 0]
+        records_with_sales_sorted = sorted(records_with_sales, key=lambda r: -r['total_amount'])
+        records_no_sales_sorted = sorted(records_no_sales, key=lambda r: (r['catalog_id'], r['family_id'], r['subfamily_id']))
+        records_sorted = records_with_sales_sorted + records_no_sales_sorted
 
-    # Upsert en la tabla analysis_abc (debes tener un UPSERT_ANALYSIS_ABC query)
+        total_amount_sum = sum(r['total_amount'] for r in records_with_sales)
+        total_profit_sum = sum(r['profit'] for r in records_with_sales)
+        acc_sales = 0
+        acc_profit = 0
+        for rec in records_sorted:
+            if rec['total_amount'] > 0:
+                rec['sales_percentage'] = float(rec['total_amount']) / total_amount_sum * 100 if total_amount_sum > 0 else 0
+                rec['profit_percentage'] = float(rec['profit']) / total_profit_sum * 100 if total_profit_sum > 0 else 0
+                acc_sales += rec['sales_percentage']
+                acc_profit += rec['profit_percentage']
+                rec['acc_sales_percentage'] = acc_sales
+                rec['acc_profit_percentage'] = acc_profit
+                if acc_sales <= 80:
+                    rec['sold_abc'] = 'A'
+                elif acc_sales <= 95:
+                    rec['sold_abc'] = 'B'
+                else:
+                    rec['sold_abc'] = 'C'
+                if acc_profit <= 80:
+                    rec['profit_abc'] = 'A'
+                elif acc_profit <= 95:
+                    rec['profit_abc'] = 'B'
+                else:
+                    rec['profit_abc'] = 'C'
+                rec['top_products'] = 'AA' if rec['sold_abc'] == 'A' and rec['profit_abc'] == 'A' else None
+            else:
+                rec['sales_percentage'] = 0
+                rec['profit_percentage'] = 0
+                rec['acc_sales_percentage'] = 100
+                rec['acc_profit_percentage'] = 100
+                rec['sold_abc'] = 'C'
+                rec['profit_abc'] = 'C'
+                rec['top_products'] = None
+
+    # Upsert en la tabla analysis_abc
     if analysis_abc_records:
         await upsert_analysis_abc(my_pool, analysis_abc_records)
 
@@ -1136,6 +1146,250 @@ async def upsert_analysis_abc(my_pool, analysis_abc_records):
             await cursor.executemany(my_query, analysis_abc_records)
         await conn.commit()
     return len(analysis_abc_records)
+
+async def calculate_analysis_abc_todo(my_pool):
+    """
+    Calcula y actualiza la tabla AnalysisABC global (enterprise='TODO'), agrupando por año, catálogo, familia y subfamilia,
+    usando todos los movimientos y productos de todas las empresas (sin filtrar por enterprise).
+    """
+    analysis_abc_records = []
+    async with my_pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            # 1. Traer todos los años de movimientos (sin filtrar por empresa)
+            await cursor.execute("SELECT DISTINCT YEAR(movement_detail_date) AS year FROM movements_detail")
+            years = [row['year'] for row in await cursor.fetchall() if row['year'] is not None]
+
+            for year in years:
+                # 2. Traer todas las agrupaciones válidas para ese año (sin filtrar por empresa)
+                await cursor.execute(
+                    "SELECT DISTINCT catalog_id, family_id, subfamily_id FROM product WHERE YEAR(create_date)<=%s",
+                    (year,)
+                )
+                groups = await cursor.fetchall()
+
+                for group in groups:
+                    catalog_id = group['catalog_id']
+                    family_id = group['family_id']
+                    subfamily_id = group['subfamily_id']
+
+                    # Ignorar productos sin catalogo, familia o subfamilia
+                    if catalog_id is None or family_id is None or subfamily_id is None:
+                        continue
+
+                    # 3. Calcular los datos agregados (sin filtrar por empresa)
+                    # Total amount, profit, units_sold
+                    await cursor.execute(
+                        """
+                        SELECT
+                          COALESCE(SUM(md.amount),0) AS total_amount,
+                          COALESCE(SUM(md.amount - (md.cost_of_sale * md.quantity)),0) AS profit,
+                          COALESCE(SUM(md.quantity),0) AS units_sold
+                        FROM movements_detail md
+                        JOIN product p ON md.product_id = p.id
+                        WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                          AND YEAR(md.movement_detail_date) = %s
+                        """,
+                        (catalog_id, family_id, subfamily_id, year)
+                    )
+                    row = await cursor.fetchone() or {}
+                    total_amount = float(row.get('total_amount', 0) or 0)
+                    profit = float(row.get('profit', 0) or 0)
+                    units_sold = float(row.get('units_sold', 0) or 0)
+                    profit_percentage = (profit / total_amount * 100) if total_amount else 0
+
+                    # Inventario de cierre (unidades y pesos)
+                    await cursor.execute(
+                        """
+                        SELECT
+                          COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity WHEN m.is_output = true THEN -md.quantity END),0) AS inventory_close_u,
+                          COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity*md.cost_of_sale WHEN m.is_output = true THEN -md.quantity*md.cost_of_sale END),0) AS inventory_close_p
+                        FROM movements_detail md
+                        JOIN movements m ON md.movement_id = m.id
+                        JOIN product p ON md.product_id = p.id
+                        WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                          AND YEAR(md.movement_detail_date) <= %s
+                        """,
+                        (catalog_id, family_id, subfamily_id, year)
+                    )
+                    row = await cursor.fetchone() or {}
+                    inventory_close_u = float(row.get('inventory_close_u', 0) or 0)
+                    inventory_close_p = float(row.get('inventory_close_p', 0) or 0)
+
+                    # Por mes: ventas y cierre inventario
+                    month_sales_u = {}
+                    month_sales_p = {}
+                    inventory_close_u_month = {}
+                    inventory_close_p_month = {}
+                    for month in range(1, 13):
+                        await cursor.execute(
+                            """
+                            SELECT
+                              COALESCE(SUM(md.quantity),0) AS month_sale_u,
+                              COALESCE(SUM(md.amount),0) AS month_sale_p
+                            FROM movements_detail md
+                            JOIN product p ON md.product_id = p.id
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                              AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s
+                            """,
+                            (catalog_id, family_id, subfamily_id, year, month)
+                        )
+                        row = await cursor.fetchone() or {}
+                        month_sales_u[month] = float(row.get('month_sale_u', 0) or 0)
+                        month_sales_p[month] = float(row.get('month_sale_p', 0) or 0)
+                        await cursor.execute(
+                            """
+                            SELECT
+                                COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity WHEN m.is_output = true THEN -md.quantity END),0) AS inventory_close_u,
+                                COALESCE(SUM(CASE WHEN m.is_input = true THEN md.quantity*md.cost_of_sale WHEN m.is_output = true THEN -md.quantity*md.cost_of_sale END),0) AS inventory_close_p
+                            FROM movements_detail md
+                            JOIN movements m ON md.movement_id = m.id
+                            JOIN product p ON md.product_id = p.id
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                              AND (YEAR(md.movement_detail_date) < %s OR (YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) <= %s))
+                            """,
+                            (catalog_id, family_id, subfamily_id, year, year, month)
+                        )
+                        row = await cursor.fetchone() or {}
+                        inventory_close_u_month[month] = float(row.get('inventory_close_u', 0) or 0)
+                        inventory_close_p_month[month] = float(row.get('inventory_close_p', 0) or 0)
+
+                    sold_average_month = total_amount / 12 if total_amount else 0
+                    profit_average_month = profit / 12 if profit else 0
+                    actual_inventory = inventory_close_p
+                    average_selling_cost = (total_amount - profit) / 12 if total_amount else 0
+                    inventory_average_u = sum(inventory_close_u_month.values()) / 12
+                    inventory_average_p = sum(inventory_close_p_month.values()) / 12
+                    inventory_days = (actual_inventory / average_selling_cost * 30) if average_selling_cost else 0
+                    monthly_roi = profit_average_month / inventory_average_p if inventory_average_p else 0
+
+                    analysis_abc_records.append({
+                        "catalog_id": catalog_id,
+                        "family_id": family_id,
+                        "subfamily_id": subfamily_id,
+                        "total_amount": total_amount,
+                        "profit": profit,
+                        "profit_percentage": profit_percentage,
+                        "units_sold": units_sold,
+                        "inventory_close_u": inventory_close_u,
+                        "inventory_close_p": inventory_close_p,
+                        "sold_average_month": sold_average_month,
+                        "profit_average_month": profit_average_month,
+                        "actual_inventory": actual_inventory,
+                        "average_selling_cost": average_selling_cost,
+                        "inventory_average_u": inventory_average_u,
+                        "inventory_average_p": inventory_average_p,
+                        "inventory_days": inventory_days,
+                        "monthly_roi": monthly_roi,
+                        # Meses
+                        "month_sale_u_january": month_sales_u[1],
+                        "month_sale_p_january": month_sales_p[1],
+                        "inventory_close_u_january": inventory_close_u_month[1],
+                        "inventory_close_p_january": inventory_close_p_month[1],
+                        "month_sale_u_february": month_sales_u[2],
+                        "month_sale_p_february": month_sales_p[2],
+                        "inventory_close_u_february": inventory_close_u_month[2],
+                        "inventory_close_p_february": inventory_close_p_month[2],
+                        "month_sale_u_march": month_sales_u[3],
+                        "month_sale_p_march": month_sales_p[3],
+                        "inventory_close_u_march": inventory_close_u_month[3],
+                        "inventory_close_p_march": inventory_close_p_month[3],
+                        "month_sale_u_april": month_sales_u[4],
+                        "month_sale_p_april": month_sales_p[4],
+                        "inventory_close_u_april": inventory_close_u_month[4],
+                        "inventory_close_p_april": inventory_close_p_month[4],
+                        "month_sale_u_may": month_sales_u[5],
+                        "month_sale_p_may": month_sales_p[5],
+                        "inventory_close_u_may": inventory_close_u_month[5],
+                        "inventory_close_p_may": inventory_close_p_month[5],
+                        "month_sale_u_june": month_sales_u[6],
+                        "month_sale_p_june": month_sales_p[6],
+                        "inventory_close_u_june": inventory_close_u_month[6],
+                        "inventory_close_p_june": inventory_close_p_month[6],
+                        "month_sale_u_july": month_sales_u[7],
+                        "month_sale_p_july": month_sales_p[7],
+                        "inventory_close_u_july": inventory_close_u_month[7],
+                        "inventory_close_p_july": inventory_close_p_month[7],
+                        "month_sale_u_august": month_sales_u[8],
+                        "month_sale_p_august": month_sales_p[8],
+                        "inventory_close_u_august": inventory_close_u_month[8],
+                        "inventory_close_p_august": inventory_close_p_month[8],
+                        "month_sale_u_september": month_sales_u[9],
+                        "month_sale_p_september": month_sales_p[9],
+                        "inventory_close_u_september": inventory_close_u_month[9],
+                        "inventory_close_p_september": inventory_close_p_month[9],
+                        "month_sale_u_october": month_sales_u[10],
+                        "month_sale_p_october": month_sales_p[10],
+                        "inventory_close_u_october": inventory_close_u_month[10],
+                        "inventory_close_p_october": inventory_close_p_month[10],
+                        "month_sale_u_november": month_sales_u[11],
+                        "month_sale_p_november": month_sales_p[11],
+                        "inventory_close_u_november": inventory_close_u_month[11],
+                        "inventory_close_p_november": inventory_close_p_month[11],
+                        "month_sale_u_december": month_sales_u[12],
+                        "month_sale_p_december": month_sales_p[12],
+                        "inventory_close_u_december": inventory_close_u_month[12],
+                        "inventory_close_p_december": inventory_close_p_month[12],
+                        "enterprise": "TODO",
+                        "year": year,
+                        "last_update": datetime.datetime.now(),
+                        # Los siguientes campos se calculan después
+                        "sales_percentage": 0,
+                        "acc_sales_percentage": 0,
+                        "sold_abc": None,
+                        "acc_profit_percentage": 0,
+                        "profit_abc": None,
+                        "top_products": None,
+                    })
+
+    # Calcular sales_percentage, acc_sales_percentage, sold_abc, acc_profit_percentage, profit_abc, top_products
+    grouped = defaultdict(list)
+    for rec in analysis_abc_records:
+        grouped[(rec['enterprise'], rec['year'])].append(rec)
+
+    for (enterprise, year), records in grouped.items():
+        records_with_sales = [r for r in records if r['total_amount'] > 0]
+        records_no_sales = [r for r in records if r['total_amount'] <= 0]
+        records_with_sales_sorted = sorted(records_with_sales, key=lambda r: -r['total_amount'])
+        records_no_sales_sorted = sorted(records_no_sales, key=lambda r: (r['catalog_id'], r['family_id'], r['subfamily_id']))
+        records_sorted = records_with_sales_sorted + records_no_sales_sorted
+
+        total_amount_sum = sum(r['total_amount'] for r in records_with_sales)
+        total_profit_sum = sum(r['profit'] for r in records_with_sales)
+        acc_sales = 0
+        acc_profit = 0
+        for rec in records_sorted:
+            if rec['total_amount'] > 0:
+                rec['sales_percentage'] = float(rec['total_amount']) / total_amount_sum * 100 if total_amount_sum > 0 else 0
+                rec['profit_percentage'] = float(rec['profit']) / total_profit_sum * 100 if total_profit_sum > 0 else 0
+                acc_sales += rec['sales_percentage']
+                acc_profit += rec['profit_percentage']
+                rec['acc_sales_percentage'] = acc_sales
+                rec['acc_profit_percentage'] = acc_profit
+                if acc_sales <= 80:
+                    rec['sold_abc'] = 'A'
+                elif acc_sales <= 95:
+                    rec['sold_abc'] = 'B'
+                else:
+                    rec['sold_abc'] = 'C'
+                if acc_profit <= 80:
+                    rec['profit_abc'] = 'A'
+                elif acc_profit <= 95:
+                    rec['profit_abc'] = 'B'
+                else:
+                    rec['profit_abc'] = 'C'
+                rec['top_products'] = 'AA' if rec['sold_abc'] == 'A' and rec['profit_abc'] == 'A' else None
+            else:
+                rec['sales_percentage'] = 0
+                rec['profit_percentage'] = 0
+                rec['acc_sales_percentage'] = 100
+                rec['acc_profit_percentage'] = 100
+                rec['sold_abc'] = 'C'
+                rec['profit_abc'] = 'C'
+                rec['top_products'] = None
+
+    # Upsert en la tabla analysis_abc
+    if analysis_abc_records:
+        await upsert_analysis_abc(my_pool, analysis_abc_records)
 
 ### Enterprises funciona para ir agregando mas empresas y sus respectivos datos de conexion a la base de datos, tomarlo en cuenta al traer los datos
 ### Existe la variable ENV_UPDATE_ALL_DATES que si es True no se toma en cuenta el ultimo año o mes o fecha de actualización y se actualizan todos los registros
