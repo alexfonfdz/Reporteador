@@ -942,7 +942,7 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                         JOIN movements m ON md.movement_id = m.id
                         JOIN product p ON md.product_id = p.id
                         WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) <= %s
+                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) <= %s AND m.pending = true
                         """,
                         (catalog_id, family_id, subfamily_id, schema, year)
                     )
@@ -963,8 +963,9 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                               COALESCE(SUM(md.amount),0) AS month_sale_p
                             FROM movements_detail md
                             JOIN product p ON md.product_id = p.id
+                            JOIN movements m ON md.movement_id = m.id
                             WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                              AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s
+                              AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s AND m.pending = true
                             """,
                             (catalog_id, family_id, subfamily_id, schema, year, month)
                         )
@@ -979,7 +980,7 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                             FROM movements_detail md
                             JOIN movements m ON md.movement_id = m.id
                             JOIN product p ON md.product_id = p.id
-                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s AND m.pending = true
                               AND p.enterprise = %s AND (YEAR(md.movement_detail_date) < %s OR (YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) <= %s))
                             """,
                             (catalog_id, family_id, subfamily_id, schema, year, year, month)
@@ -1207,7 +1208,7 @@ async def calculate_analysis_abc_todo(my_pool):
                         JOIN movements m ON md.movement_id = m.id
                         JOIN product p ON md.product_id = p.id
                         WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                          AND YEAR(md.movement_detail_date) <= %s
+                          AND YEAR(md.movement_detail_date) <= %s AND m.pending = true
                         """,
                         (catalog_id, family_id, subfamily_id, year)
                     )
@@ -1228,8 +1229,9 @@ async def calculate_analysis_abc_todo(my_pool):
                               COALESCE(SUM(md.amount),0) AS month_sale_p
                             FROM movements_detail md
                             JOIN product p ON md.product_id = p.id
+                            JOIN movements m ON md.movement_id = m.id
                             WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                              AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s
+                              AND YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) = %s AND m.pending = true
                             """,
                             (catalog_id, family_id, subfamily_id, year, month)
                         )
@@ -1244,7 +1246,7 @@ async def calculate_analysis_abc_todo(my_pool):
                             FROM movements_detail md
                             JOIN movements m ON md.movement_id = m.id
                             JOIN product p ON md.product_id = p.id
-                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
+                            WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s AND m.pending = true
                               AND (YEAR(md.movement_detail_date) < %s OR (YEAR(md.movement_detail_date) = %s AND MONTH(md.movement_detail_date) <= %s))
                             """,
                             (catalog_id, family_id, subfamily_id, year, year, month)
