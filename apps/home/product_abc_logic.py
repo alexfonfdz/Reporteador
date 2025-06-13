@@ -921,8 +921,9 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
                           COALESCE(SUM(md.quantity),0) AS units_sold
                         FROM movements_detail md
                         JOIN product p ON md.product_id = p.id
+                        JOIN movements m ON md.movement_id = m.id
                         WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s
+                          AND p.enterprise = %s AND YEAR(md.movement_detail_date) = %s AND m.movement_type = 2 AND m.canceled = false
                         """,
                         (catalog_id, family_id, subfamily_id, schema, year)
                     )
@@ -1187,8 +1188,9 @@ async def calculate_analysis_abc_todo(my_pool):
                           COALESCE(SUM(md.quantity),0) AS units_sold
                         FROM movements_detail md
                         JOIN product p ON md.product_id = p.id
+                        JOIN movements m ON md.movement_id = m.id
                         WHERE p.catalog_id = %s AND p.family_id = %s AND p.subfamily_id = %s
-                          AND YEAR(md.movement_detail_date) = %s
+                          AND YEAR(md.movement_detail_date) = %s AND m.movement_type = 2 AND m.canceled = false
                         """,
                         (catalog_id, family_id, subfamily_id, year)
                     )
