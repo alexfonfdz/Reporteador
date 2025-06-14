@@ -5,19 +5,21 @@ Copyright (c) 2019 - present AppSeed.us
 
 from django import template
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, HttpResponseNotAllowed, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotAllowed, HttpResponseRedirect
 from django.template import loader
 from django.urls import reverse
 from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
+from apps.home.models import ProductABC
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_UPDATE_ALL_DATES
 import mysql.connector as m
 import json
 import asyncio
 import psycopg2 as p
 import pandas as pd
+from .product_abc_logic import enterprises
 
 
 @login_required(login_url="/login/")
@@ -321,3 +323,93 @@ def debug_productosabc(request):
 
     
     return JsonResponse(data, safe=False)
+
+@csrf_exempt
+def get_enterprises(request):
+    return JsonResponse(list(enterprises.keys()), safe=False)
+
+
+@csrf_exempt
+def get_products_abc(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['Get'])
+
+    # Obtener filtros desde searchParams
+    family = request.GET.get('family', '').strip()
+    subfamily = request.GET.get('subfamily', '').strip()
+    year = request.GET.get('year', '').strip()
+    enterprise_key = request.GET.get('enterprise', '').strip() 
+
+    # Determinar el schema a partir del enterprise_key
+    enterprise_data = enterprises.get(enterprise_key)
+    schema = enterprise_data.schema if enterprise_data else ''
+
+    # Construir el queryset con filtros
+    qs = ProductABC.objects.select_related(
+        'product',
+        'product__family',
+        'product__subfamily',
+        'product__brand'
+    )
+
+    if family:
+        qs = qs.filter(product__family__name__icontains=family)
+    if subfamily:
+        qs = qs.filter(product__subfamily__name__icontains=subfamily)
+    if year:
+        try:
+            qs = qs.filter(year=int(year))
+        except ValueError:
+            pass
+    if schema:
+        qs = qs.filter(enterprise=schema)
+
+    all_products = list(qs.all())
+
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 10))
+
+    paginator = Paginator(
+        object_list=all_products,
+        per_page=per_page
+    )
+
+    page_obj = paginator.get_page(page)
+    data = []
+    for abc in page_obj.object_list:
+        product = abc.product
+        data.append({
+            "id": abc.id,
+            "sales_percentage": float(abc.sales_percentage) if abc.sales_percentage is not None else None,
+            "acc_sales_percentage": float(abc.acc_sales_percentage) if abc.acc_sales_percentage is not None else None,
+            "sold_abc": abc.sold_abc,
+            "profit_percentage": float(abc.profit_percentage) if abc.profit_percentage is not None else None,
+            "acc_profit_percentage": float(abc.acc_profit_percentage) if abc.acc_profit_percentage is not None else None,
+            "profit_abc": abc.profit_abc,
+            "top_products": abc.top_products,
+            "enterprise": abc.enterprise,
+            "year": abc.year,
+            "last_update": abc.last_update.isoformat() if abc.last_update else None,
+            # Información del producto
+            "product_id": product.id,
+            "product_code": product.code,
+            "product_description": product.description,
+            # Información de la familia
+            "family_name": product.family.name if product.family else None,
+            # Información de la subfamilia
+            "subfamily_name": product.subfamily.name if product.subfamily else None,
+            # Información de la marca
+            "brand_name": product.brand.name if product.brand else None,
+        })
+
+    pagination_data = {
+        "num_pages": paginator.num_pages,
+        "page": page_obj.number,
+    }
+
+
+    return JsonResponse({
+        "data": data,
+        "pagination": pagination_data
+    })
+
