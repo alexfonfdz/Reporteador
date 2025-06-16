@@ -599,7 +599,6 @@ function getEnterprises() {
 }
 
 
-const pageItems = document.getElementById('page-items')
 
 
 const params = new URLSearchParams(window.location.search)
@@ -616,28 +615,57 @@ const table = new DataTable({
 table.setOnPageChange((pagination) => {
     if (!pagination.has_next) {
         document.getElementById('next-page').setAttribute('disabled', true)
+        document.getElementById('next-page').parentElement.classList.add('disabled')
     } else {
         document.getElementById('next-page').removeAttribute('disabled')
+        document.getElementById('next-page').parentElement.classList.remove('disabled')
+        
     }
     if (!pagination.has_prev) {
-        document.getElementById('prev-page').setAttribute('disabled', true)
+        document.getElementById('previous-page').setAttribute('disabled', true)
+        document.getElementById('previous-page').parentElement.classList.add('disabled')
     } else {
-        document.getElementById('prev-page').removeAttribute('disabled')
+        document.getElementById('previous-page').removeAttribute('disabled')
+        document.getElementById('previous-page').parentElement.classList.remove('disabled')
     }
 
+    if (pagination.page == 1) {
+        document.getElementById('first-page').setAttribute('disabled', true)
+        document.getElementById('first-page').parentElement.classList.add('disabled')
+    } else {
+        document.getElementById('first-page').removeAttribute('disabled')
+        document.getElementById('first-page').parentElement.classList.remove('disabled')
+    }
+
+    if (pagination.page == pagination.num_pages) {
+        document.getElementById('last-page').setAttribute('disabled', true)
+        document.getElementById('last-page').parentElement.classList.add('disabled')
+    } else {
+        document.getElementById('last-page').removeAttribute('disabled')
+        document.getElementById('last-page').parentElement.classList.remove('disabled')
+    }
+
+    document.getElementById('results').innerHTML = `MOSTRANDO  <span class="text-body-primary">${pagination.page}</span> DE ${pagination.num_pages} PAGINAS`
 })
 
 table.loadHeaders()
 table.initialize()
 
 
+
 document.getElementById('next-page').addEventListener('click', async () => {
     await table.updateSearchState({ page: table.getCurrentPage() + 1 })
 })
-document.getElementById('prev-page').addEventListener('click', async () => {
+document.getElementById('previous-page').addEventListener('click', async () => {
     await table.updateSearchState({ page: table.getCurrentPage() - 1 })
 })
 
+document.getElementById('first-page').addEventListener('click', async () => {
+    await table.updateSearchState({ page: 1 })
+})
+document.getElementById('last-page').addEventListener('click', async () => {
+    await table.updateSearchState({ page: table.getNumPages() })
+})
 
 const filtersForm = document.getElementById('filter-form')
 

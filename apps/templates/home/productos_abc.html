@@ -3,9 +3,7 @@
 {% block title %} Clientes Nuevos {% endblock %} 
 
 {% block stylesheets %}
-select {
-    background-color: red;
-}
+
 {% endblock stylesheets %}
 
 {% block content %}
@@ -15,7 +13,7 @@ select {
             <div class="card">
                 <div class="card-header card-header-primary">
                     <h4 class="card-title ">Productos ABC</h4>
-                    <p class="card-category"> Lorem ipsum dolor sit amet, consectetur adipisci elit</p>
+                    <p class="card-category"></p>
                 </div>
                 <div class="card-body">
                     <form id="filter-form" method="get">
@@ -47,14 +45,27 @@ select {
                             </tbody>
                         </table>
                     </div>
-                    <div class="pagination">
-                        <button id="prev-page" class="btn btn-primary">Anterior</button>
-                        <div id="page-items">
-
-                        </div>
-                        
-                        <button id="next-page" class="btn btn-primary">Siguiente</button>
-                    </div>
+                    <nav aria-label="">
+                        <ul class="pagination">
+                            <li class="page-item">
+                                <button class="page-link" id="first-page" aria-label="First Page">
+                                    <span aria-hidden="true">&laquo;</span>
+                                </button>
+                            </li>
+                            <li class="page-item">
+                                <button id="previous-page" aria-label="Previous" class="page-link">Anterior</button>
+                            </li>
+                            <li class="page-item">
+                                <button id="next-page" aria-label="Next" class="page-link">Siguiente</button>
+                            </li>
+                            <li class="page-item">
+                            <button class="page-link" id="last-page" aria-label="Next">
+                                <span aria-hidden="true">&raquo;</span>
+                            </button>
+                            </li>
+                        </ul>
+                        <p id="results"></p>
+                    </nav>
                 </div>
             </div>
         </div>

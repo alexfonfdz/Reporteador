@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
-from apps.home.models import ProductABC
+from apps.home.models import ProductABC, AnalysisABC
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_UPDATE_ALL_DATES
 import mysql.connector as m
 import json
@@ -413,3 +413,92 @@ def get_products_abc(request):
         "pagination": pagination_data
     })
 
+@csrf_exempt
+def get_analysis_abc(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['Get'])
+
+    # Obtener filtros desde searchParams
+    family = request.GET.get('family', '').strip()
+    subfamily = request.GET.get('subfamily', '').strip()
+    year = request.GET.get('year', '').strip()
+    enterprise_key = request.GET.get('enterprise', '').strip()
+
+    # Determinar el schema a partir del enterprise_key
+    enterprise_data = enterprises.get(enterprise_key)
+    schema = enterprise_data.schema if enterprise_data else ''
+
+    # select_related solo con campos válidos
+    qs = AnalysisABC.objects.select_related(
+        'family',
+        'subfamily',
+        'catalog'
+    )
+
+    if family:
+        qs = qs.filter(family__name__icontains=family)
+    if subfamily:
+        qs = qs.filter(subfamily__name__icontains=subfamily)
+    if year:
+        try:
+            qs = qs.filter(year=int(year))
+        except ValueError:
+            pass
+    if schema:
+        qs = qs.filter(enterprise=schema)
+
+    all_analysis = list(qs.all())
+
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 10))
+
+    paginator = Paginator(
+        object_list=all_analysis,
+        per_page=per_page
+    )
+
+    page_obj = paginator.get_page(page)
+    data = []
+    for analysis in page_obj.object_list:
+        data.append({
+            "id": analysis.id,
+            "total_amount": float(analysis.total_amount) if analysis.total_amount is not None else None,
+            "profit": float(analysis.profit) if analysis.profit is not None else None,
+            "profit_percentage": float(analysis.profit_percentage) if analysis.profit_percentage is not None else None,
+            "units_sold": analysis.units_sold,
+            "inventory_close_u": float(analysis.inventory_close_u) if analysis.inventory_close_u is not None else None,
+            "inventory_close_p": float(analysis.inventory_close_p) if analysis.inventory_close_p is not None else None,
+            "monthly_roi": float(analysis.monthly_roi) if analysis.monthly_roi is not None else None,
+            "sold_average_month": float(analysis.sold_average_month) if analysis.sold_average_month is not None else None,
+            "profit_average_month": float(analysis.profit_average_month) if analysis.profit_average_month is not None else None,
+            "actual_inventory": float(analysis.actual_inventory) if analysis.actual_inventory is not None else None,
+            "average_selling_cost": float(analysis.average_selling_cost) if analysis.average_selling_cost is not None else None,
+            "inventory_average_u": float(analysis.inventory_average_u) if analysis.inventory_average_u is not None else None,
+            "inventory_average_p": float(analysis.inventory_average_p) if analysis.inventory_average_p is not None else None,
+            "inventory_days": analysis.inventory_days,
+            "sales_percentage": float(analysis.sales_percentage) if analysis.sales_percentage is not None else None,
+            "acc_sales_percentage": float(analysis.acc_sales_percentage) if analysis.acc_sales_percentage is not None else None,
+            "sold_abc": analysis.sold_abc,
+            "profit_abc": analysis.profit_abc,
+            "acc_profit_percentage": float(analysis.acc_profit_percentage) if analysis.acc_profit_percentage is not None else None,
+            "top_products": analysis.top_products,
+            "enterprise": analysis.enterprise,
+            "year": analysis.year,
+            "last_update": analysis.last_update.isoformat() if analysis.last_update else None,
+            # Información de la familia
+            "family_name": analysis.family.name if analysis.family else None,
+            # Información de la subfamilia
+            "subfamily_name": analysis.subfamily.name if analysis.subfamily else None,
+            # Información del catálogo
+            "catalog_name": analysis.catalog.name if analysis.catalog else None,
+        })
+
+    pagination_data = {
+        "num_pages": paginator.num_pages,
+        "page": page_obj.number,
+    }
+
+    return JsonResponse({
+        "data": data,
+        "pagination": pagination_data
+    })

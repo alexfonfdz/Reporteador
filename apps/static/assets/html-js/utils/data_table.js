@@ -17,6 +17,7 @@ export class DataTable {
     }
 
     getCurrentPage() { return this.pagination.page }
+    getNumPages() { return this.pagination.num_pages }
 
     setOnPageChange(fun) {
         if (typeof fun != 'function') { return }

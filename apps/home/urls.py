@@ -24,6 +24,7 @@ urlpatterns = [
     path('getDebugProductosABC', views.debug_productosabc, name='getDebugProductosABC'),
     path('getEnterprises', views.get_enterprises, name='getEnterprises'),
     path('getProductsABC', views.get_products_abc, name='getProductsABC'),
+    path('getAnalysisABC', views.get_analysis_abc, name='getAnalysisABC'),
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),
