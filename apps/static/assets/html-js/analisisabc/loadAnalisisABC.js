@@ -186,12 +186,14 @@ const tableColumns = [
 const tableBody = document.getElementById('clientes-table-body')
 const tableHead = tableBody.parentElement.children[0]
 
-function getAnalysisABC({ page, year, family, subfamily, enterprise }) {
+function getAnalysisABC({ page, year_start, year_end, family, subfamily, enterprise }) {
     const url = new URL('/getAnalysisABC', window.location.origin)
     if (page)
         url.searchParams.set('page', page)
-    if (year)
-        url.searchParams.set('year', year)
+    if (year_start)
+        url.searchParams.set('year_start', year_start)
+    if (year_end)
+        url.searchParams.set('year_end', year_end)
     if (family)
         url.searchParams.set('family', family)
     if (subfamily)
@@ -278,7 +280,6 @@ table.setOnPageChange((pagination) => {
 })
 
 table.loadHeaders()
-table.initialize()
 
 document.getElementById('next-page').addEventListener('click', async () => {
     await table.updateSearchState({ page: table.getCurrentPage() + 1 })
@@ -294,7 +295,105 @@ document.getElementById('last-page').addEventListener('click', async () => {
 })
 
 const filtersForm = document.getElementById('filter-form')
+const familyInput = document.getElementById('family-filter')
+const subfamilyInput = document.getElementById('subfamily-filter')
+const familyList = document.getElementById('family-list')
+const subfamilyList = document.getElementById('subfamily-list')
 const enterprisesSelect = document.getElementById('enterprises-filter')
+const yearStartInput = document.getElementById('year-start-filter')
+const yearEndInput = document.getElementById('year-end-filter')
+
+// Cargar todas las familias únicas por nombre
+async function loadAllFamilies() {
+    familyList.innerHTML = ''
+    const url = new URL('/getFamilies', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const families = await res.json()
+    const uniqueNames = new Set()
+    families.forEach(fam => {
+        if (!uniqueNames.has(fam.name)) {
+            const opt = document.createElement('option')
+            opt.value = fam.name
+            familyList.appendChild(opt)
+            uniqueNames.add(fam.name)
+        }
+    })
+}
+
+// Cargar todas las subfamilias únicas por nombre
+async function loadAllSubfamilies() {
+    subfamilyList.innerHTML = ''
+    const url = new URL('/getSubfamilies', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const subfamilies = await res.json()
+    const uniqueNames = new Set()
+    subfamilies.forEach(subfam => {
+        if (!uniqueNames.has(subfam.name)) {
+            const opt = document.createElement('option')
+            opt.value = subfam.name
+            subfamilyList.appendChild(opt)
+            uniqueNames.add(subfam.name)
+        }
+    })
+}
+
+// Cargar familias según la empresa seleccionada
+async function loadFamilies(enterprise) {
+    familyList.innerHTML = ''
+    if (!enterprise) {
+        subfamilyList.innerHTML = ''
+        return
+    }
+    const url = new URL('/getFamilies', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const families = await res.json()
+    families.forEach(fam => {
+        const opt = document.createElement('option')
+        opt.value = fam.name
+        familyList.appendChild(opt)
+    })
+    // Limpiar subfamilias al cambiar empresa
+    subfamilyList.innerHTML = ''
+}
+
+// Cargar subfamilias según la empresa y familia seleccionada
+async function loadSubfamilies(enterprise) {
+    subfamilyList.innerHTML = ''
+    if (!enterprise) return
+    const url = new URL('/getSubfamilies', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const subfamilies = await res.json()
+    subfamilies.forEach(subfam => {
+        const opt = document.createElement('option')
+        opt.value = subfam.name
+        subfamilyList.appendChild(opt)
+    })
+}
+
+// Evento para actualizar familias y subfamilias al cambiar empresa
+enterprisesSelect.addEventListener('change', async (e) => {
+    const enterprise = e.target.value
+    if (!enterprise) {
+        await loadAllFamilies()
+        await loadAllSubfamilies()
+    } else {
+        await loadFamilies(enterprise)
+        await loadSubfamilies(enterprise)
+    }
+})
+
+
+// Inicializar datalists al cargar la página
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAllFamilies()
+    await loadAllSubfamilies()
+})
 
 getEnterprises().then(enterprises => {
     if (!enterprises) {
@@ -309,5 +408,17 @@ filtersForm.addEventListener('submit', async (e) => {
     e.preventDefault()
     const formData = new FormData(filtersForm)
     const filters = Object.fromEntries(formData.entries())
+
+    // Validar que ambos años estén definidos y al menos familia o subfamilia tenga valor
+    const yearStart = filters.year_start
+    const yearEnd = filters.year_end
+    const family = filters.family
+    const subfamily = filters.subfamily
+
+    if (!yearStart || !yearEnd || (!family && !subfamily)) {
+        alert('Debes seleccionar un rango de años y al menos un filtro de familia o subfamilia.')
+        return
+    }
+
     table.updateSearchState({ filters })
 })

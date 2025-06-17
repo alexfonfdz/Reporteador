@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
-from apps.home.models import ProductABC, AnalysisABC
+from apps.home.models import ProductABC, AnalysisABC, Family, SubFamily, Brand, Catalog
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_UPDATE_ALL_DATES
 import mysql.connector as m
 import json
@@ -337,7 +337,10 @@ def get_products_abc(request):
     # Obtener filtros desde searchParams
     family = request.GET.get('family', '').strip()
     subfamily = request.GET.get('subfamily', '').strip()
-    year = request.GET.get('year', '').strip()
+    brand = request.GET.get('brand', '').strip()
+    catalog = request.GET.get('catalog', '').strip()
+    year_start = request.GET.get('year_start', '').strip()
+    year_end = request.GET.get('year_end', '').strip()
     enterprise_key = request.GET.get('enterprise', '').strip() 
 
     # Determinar el schema a partir del enterprise_key
@@ -349,16 +352,32 @@ def get_products_abc(request):
         'product',
         'product__family',
         'product__subfamily',
-        'product__brand'
+        'product__brand',
+        'product__catalog'
     )
 
     if family:
         qs = qs.filter(product__family__name__icontains=family)
     if subfamily:
         qs = qs.filter(product__subfamily__name__icontains=subfamily)
-    if year:
+    if brand:
+        qs = qs.filter(product__brand__name__icontains=brand)
+    if catalog:
+        qs = qs.filter(product__catalog__name__icontains=catalog)
+    # Filtro por rango de años
+    if year_start and year_end:
         try:
-            qs = qs.filter(year=int(year))
+            qs = qs.filter(year__gte=int(year_start), year__lte=int(year_end))
+        except ValueError:
+            pass
+    elif year_start:
+        try:
+            qs = qs.filter(year__gte=int(year_start))
+        except ValueError:
+            pass
+    elif year_end:
+        try:
+            qs = qs.filter(year__lte=int(year_end))
         except ValueError:
             pass
     if schema:
@@ -400,6 +419,8 @@ def get_products_abc(request):
             "subfamily_name": product.subfamily.name if product.subfamily else None,
             # Información de la marca
             "brand_name": product.brand.name if product.brand else None,
+            # Información del catálogo
+            "catalog_name": product.catalog.name if product.catalog else None,
         })
 
     pagination_data = {
@@ -421,7 +442,8 @@ def get_analysis_abc(request):
     # Obtener filtros desde searchParams
     family = request.GET.get('family', '').strip()
     subfamily = request.GET.get('subfamily', '').strip()
-    year = request.GET.get('year', '').strip()
+    year_start = request.GET.get('year_start', '').strip()
+    year_end = request.GET.get('year_end', '').strip()
     enterprise_key = request.GET.get('enterprise', '').strip()
 
     # Determinar el schema a partir del enterprise_key
@@ -439,16 +461,29 @@ def get_analysis_abc(request):
         qs = qs.filter(family__name__icontains=family)
     if subfamily:
         qs = qs.filter(subfamily__name__icontains=subfamily)
-    if year:
+    # Filtro por rango de años
+    if year_start and year_end:
         try:
-            qs = qs.filter(year=int(year))
+            qs = qs.filter(year__gte=int(year_start), year__lte=int(year_end))
+        except ValueError:
+            pass
+    elif year_start:
+        try:
+            qs = qs.filter(year__gte=int(year_start))
+        except ValueError:
+            pass
+    elif year_end:
+        try:
+            qs = qs.filter(year__lte=int(year_end))
         except ValueError:
             pass
     if schema:
         qs = qs.filter(enterprise=schema)
 
-    all_analysis = list(qs.all())
+    qs.order_by('total_amount')
 
+    all_analysis = list(qs.all())
+    
     page = int(request.GET.get('page', 1))
     per_page = int(request.GET.get('per_page', 10))
 
@@ -502,3 +537,58 @@ def get_analysis_abc(request):
         "data": data,
         "pagination": pagination_data
     })
+
+@csrf_exempt
+def get_families(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+    enterprise = request.GET.get('enterprise', '').strip()
+    qs = Family.objects.all()
+    if enterprise:
+        enterprise_data = enterprises.get(enterprise)
+        if enterprise_data:
+            enterprise = enterprise_data.schema
+        qs = qs.filter(enterprise=enterprise)
+    # Solo nombres únicos
+    families = qs.values('name').distinct()
+    return JsonResponse(list(families), safe=False)
+
+@csrf_exempt
+def get_subfamilies(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+    enterprise = request.GET.get('enterprise', '').strip()
+    qs = SubFamily.objects.all()
+    if enterprise:
+        enterprise_data = enterprises.get(enterprise)
+        if enterprise_data:
+            enterprise = enterprise_data.schema
+            qs = qs.filter(enterprise=enterprise)
+    # Solo nombres únicos
+    subfamilies = qs.values('name').distinct()
+    return JsonResponse(list(subfamilies), safe=False)
+
+@csrf_exempt
+def get_brands(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+    enterprise = request.GET.get('enterprise', '').strip()
+    qs = Brand.objects.all()
+    if enterprise:
+        enterprise_data = enterprises.get(enterprise)
+        if enterprise_data:
+            enterprise = enterprise_data.schema
+            qs = qs.filter(enterprise=enterprise)
+    brands = qs.values('name').distinct()
+    return JsonResponse(list(brands), safe=False)
+
+@csrf_exempt
+def get_catalogs(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+    enterprise = request.GET.get('enterprise', '').strip()
+    qs = Catalog.objects.all()
+    # Catalogs may not have enterprise, but keep for symmetry
+    # If you want to filter by enterprise, add logic here
+    catalogs = qs.values('name').distinct()
+    return JsonResponse(list(catalogs), safe=False)

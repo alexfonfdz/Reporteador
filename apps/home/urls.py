@@ -25,6 +25,10 @@ urlpatterns = [
     path('getEnterprises', views.get_enterprises, name='getEnterprises'),
     path('getProductsABC', views.get_products_abc, name='getProductsABC'),
     path('getAnalysisABC', views.get_analysis_abc, name='getAnalysisABC'),
+    path('getFamilies', views.get_families, name='getFamilies'),
+    path('getSubfamilies', views.get_subfamilies, name='getSubfamilies'),
+    path('getBrands', views.get_brands, name='getBrands'),
+    path('getCatalogs', views.get_catalogs, name='getCatalogs'),
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),

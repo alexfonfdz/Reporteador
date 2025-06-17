@@ -532,6 +532,7 @@ const tableColumns = [
     //     accessorKey: "ventas_diciembre_pesos",
     //     preprocess: [currencyFormatter]
 
+
     // },
     // {
     //     column: "Inventario a cierre de mes Diciembre (unidades)",
@@ -542,24 +543,32 @@ const tableColumns = [
     //     accessorKey: "inventario_diciembre_pesos",
     //     preprocess: [currencyFormatter]
 
+
     // },
 ]
 
 const tableBody = document.getElementById('clientes-table-body')
 const tableHead = tableBody.parentElement.children[0]
 
-function getProductosABC({ page, year, family, subfamily, enterprise }) {
+function getProductosABC({ page, year_start, year_end, family, subfamily, brand, catalog, enterprise }) {
     const url = new URL('/getProductsABC', window.location.origin)
-
 
     if (page)
         url.searchParams.set('page', page)
-    if (year)
-        url.searchParams.set('year', year)
+    if (year_start)
+        url.searchParams.set('year_start', year_start)
+    if (year_end)
+        url.searchParams.set('year_end', year_end)
     if (family)
         url.searchParams.set('family', family)
     if (subfamily)
         url.searchParams.set('subfamily', subfamily)
+    if (brand)
+        url.searchParams.set('brand', brand)
+    if (catalog)
+        url.searchParams.set('catalog', catalog)
+    if (enterprise)
+        url.searchParams.set('enterprise', enterprise)
 
     url.searchParams.set('per_page', 10)
 
@@ -649,8 +658,6 @@ table.setOnPageChange((pagination) => {
 })
 
 table.loadHeaders()
-table.initialize()
-
 
 
 document.getElementById('next-page').addEventListener('click', async () => {
@@ -668,8 +675,179 @@ document.getElementById('last-page').addEventListener('click', async () => {
 })
 
 const filtersForm = document.getElementById('filter-form')
-
+const familyInput = document.getElementById('family-filter')
+const subfamilyInput = document.getElementById('subfamily-filter')
+const brandInput = document.getElementById('brand-filter')
+const catalogInput = document.getElementById('catalog-filter')
+const familyList = document.getElementById('family-list')
+const subfamilyList = document.getElementById('subfamily-list')
+const brandList = document.getElementById('brand-list')
+const catalogList = document.getElementById('catalog-list')
 const enterprisesSelect = document.getElementById('enterprises-filter')
+
+// Cargar todas las familias únicas por nombre
+async function loadAllFamilies() {
+    familyList.innerHTML = ''
+    const url = new URL('/getFamilies', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const families = await res.json()
+    const uniqueNames = new Set()
+    families.forEach(fam => {
+        if (!uniqueNames.has(fam.name)) {
+            const opt = document.createElement('option')
+            opt.value = fam.name
+            familyList.appendChild(opt)
+            uniqueNames.add(fam.name)
+        }
+    })
+}
+
+// Cargar todas las subfamilias únicas por nombre
+async function loadAllSubfamilies() {
+    subfamilyList.innerHTML = ''
+    const url = new URL('/getSubfamilies', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const subfamilies = await res.json()
+    const uniqueNames = new Set()
+    subfamilies.forEach(subfam => {
+        if (!uniqueNames.has(subfam.name)) {
+            const opt = document.createElement('option')
+            opt.value = subfam.name
+            subfamilyList.appendChild(opt)
+            uniqueNames.add(subfam.name)
+        }
+    })
+}
+
+// Cargar todas las marcas únicas por nombre
+async function loadAllBrands() {
+    brandList.innerHTML = ''
+    const url = new URL('/getBrands', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const brands = await res.json()
+    const uniqueNames = new Set()
+    brands.forEach(brand => {
+        if (!uniqueNames.has(brand.name)) {
+            const opt = document.createElement('option')
+            opt.value = brand.name
+            brandList.appendChild(opt)
+            uniqueNames.add(brand.name)
+        }
+    })
+}
+
+// Cargar todas los catálogos únicos por nombre
+async function loadAllCatalogs() {
+    catalogList.innerHTML = ''
+    const url = new URL('/getCatalogs', window.location.origin)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const catalogs = await res.json()
+    const uniqueNames = new Set()
+    catalogs.forEach(cat => {
+        if (!uniqueNames.has(cat.name)) {
+            const opt = document.createElement('option')
+            opt.value = cat.name
+            catalogList.appendChild(opt)
+            uniqueNames.add(cat.name)
+        }
+    })
+}
+
+// Cargar familias según la empresa seleccionada
+async function loadFamilies(enterprise) {
+    familyList.innerHTML = ''
+    if (!enterprise) {
+        subfamilyList.innerHTML = ''
+        return
+    }
+    const url = new URL('/getFamilies', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const families = await res.json()
+    families.forEach(fam => {
+        const opt = document.createElement('option')
+        opt.value = fam.name
+        familyList.appendChild(opt)
+    })
+}
+
+// Cargar subfamilias según la empresa y familia seleccionada
+async function loadSubfamilies(enterprise) {
+    subfamilyList.innerHTML = ''
+    if (!enterprise) return
+    const url = new URL('/getSubfamilies', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const subfamilies = await res.json()
+    subfamilies.forEach(subfam => {
+        const opt = document.createElement('option')
+        opt.value = subfam.name
+        subfamilyList.appendChild(opt)
+    })
+}
+
+// Cargar marcas según la empresa seleccionada
+async function loadBrands(enterprise) {
+    brandList.innerHTML = ''
+    if (!enterprise) return
+    const url = new URL('/getBrands', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const brands = await res.json()
+    brands.forEach(brand => {
+        const opt = document.createElement('option')
+        opt.value = brand.name
+        brandList.appendChild(opt)
+    })
+}
+
+// Cargar catálogos según la empresa seleccionada
+async function loadCatalogs(enterprise) {
+    catalogList.innerHTML = ''
+    if (!enterprise) return
+    const url = new URL('/getCatalogs', window.location.origin)
+    url.searchParams.set('enterprise', enterprise)
+    const res = await fetch(url)
+    if (!res.ok) return
+    const catalogs = await res.json()
+    catalogs.forEach(cat => {
+        const opt = document.createElement('option')
+        opt.value = cat.name
+        catalogList.appendChild(opt)
+    })
+}
+
+// Evento para actualizar familias, subfamilias, marcas y catálogos al cambiar empresa
+enterprisesSelect.addEventListener('change', async (e) => {
+    const enterprise = e.target.value
+    if (!enterprise) {
+        await loadAllFamilies()
+        await loadAllSubfamilies()
+        await loadAllBrands()
+        await loadAllCatalogs()
+    } else {
+        await loadFamilies(enterprise)
+        await loadSubfamilies(enterprise)
+        await loadBrands(enterprise)
+        await loadCatalogs(enterprise)
+    }
+})
+
+
+// Inicializar datalists al cargar la página
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadAllFamilies()
+    await loadAllSubfamilies()
+    await loadAllBrands()
+    await loadAllCatalogs()
+})
 
 getEnterprises().then(enterprises => {
     if (!enterprises) {
@@ -684,11 +862,21 @@ getEnterprises().then(enterprises => {
 
 filtersForm.addEventListener('submit', async (e) => {
     e.preventDefault()
-
     const formData = new FormData(filtersForm)
-
     const filters = Object.fromEntries(formData.entries())
-    console.log(filters)
+
+    // Validar que ambos años estén definidos y al menos un filtro de familia, subfamilia, marca o catálogo tenga valor
+    const yearStart = filters.year_start
+    const yearEnd = filters.year_end
+    const family = filters.family
+    const subfamily = filters.subfamily
+    const brand = filters.brand
+    const catalog = filters.catalog
+
+    if (!yearStart || !yearEnd || (!family && !subfamily && !brand && !catalog)) {
+        alert('Debes seleccionar un rango de años y al menos un filtro de familia, subfamilia, marca o catálogo.')
+        return
+    }
 
     table.updateSearchState({ filters })
 })
