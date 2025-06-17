@@ -409,14 +409,50 @@ filtersForm.addEventListener('submit', async (e) => {
     const formData = new FormData(filtersForm)
     const filters = Object.fromEntries(formData.entries())
 
-    // Validar que ambos años estén definidos y al menos familia o subfamilia tenga valor
+    // Limpiar errores previos
+    function clearError(id) {
+        const el = document.getElementById(id)
+        if (el) {
+            el.style.display = "none"
+            el.textContent = ""
+        }
+    }
+    clearError("year-start-error")
+    clearError("year-end-error")
+    clearError("family-error")
+    clearError("subfamily-error")
+
+    let hasError = false
+
+    // Validar años
     const yearStart = filters.year_start
     const yearEnd = filters.year_end
+    if (!yearStart) {
+        const el = document.getElementById("year-start-error")
+        el.textContent = "El año de inicio es obligatorio."
+        el.style.display = "block"
+        hasError = true
+    }
+    if (!yearEnd) {
+        const el = document.getElementById("year-end-error")
+        el.textContent = "El año final es obligatorio."
+        el.style.display = "block"
+        hasError = true
+    }
+
+    // Validar al menos un filtro de familia o subfamilia
     const family = filters.family
     const subfamily = filters.subfamily
+    if (!family && !subfamily) {
+        ["family-error", "subfamily-error"].forEach(id => {
+            const el = document.getElementById(id)
+            el.textContent = "Debes ingresar al menos un filtro en familia o subfamilia."
+            el.style.display = "block"
+        })
+        hasError = true
+    }
 
-    if (!yearStart || !yearEnd || (!family && !subfamily)) {
-        alert('Debes seleccionar un rango de años y al menos un filtro de familia o subfamilia.')
+    if (hasError) {
         return
     }
 

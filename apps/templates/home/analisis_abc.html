@@ -29,11 +29,13 @@
                                 <label for="family-filter" class="form-label">Familia</label>
                                 <input name="family" id="family-filter" class="form-control" list="family-list" placeholder="Familia" autocomplete="off">
                                 <datalist id="family-list"></datalist>
+                                <div id="family-error" class="invalid-feedback" style="display:none"></div>
                             </div>
                             <div class="col-md-3">
                                 <label for="subfamily-filter" class="form-label">Subfamilia</label>
                                 <input name="subfamily" id="subfamily-filter" class="form-control" list="subfamily-list" placeholder="Subfamilia" autocomplete="off">
                                 <datalist id="subfamily-list"></datalist>
+                                <div id="subfamily-error" class="invalid-feedback" style="display:none"></div>
                             </div>
                        </div>
                         <br/>
@@ -42,10 +44,12 @@
                         <div class="col-md-3">
                                 <label for="year-start-filter" class="form-label">Año inicio</label>
                                 <input type="number" name="year_start" id="year-start-filter" class="form-control" placeholder="Ej. 2020" aria-label="Año inicio" aria-describedby="basic-addon1" min="1900">
+                                <div id="year-start-error" class="invalid-feedback" style="display:none"></div>
                             </div>
                             <div class="col-md-3">
                                 <label for="year-end-filter" class="form-label">Año final</label>
                                 <input type="number" name="year_end" id="year-end-filter" class="form-control" placeholder="Ej. 2022" aria-label="Año final" aria-describedby="basic-addon1" min="1900">
+                                <div id="year-end-error" class="invalid-feedback" style="display:none"></div>
                             </div>
                        </div>
                        <button type="submit" class="btn btn-primary mt-2">Filtrar</button>

@@ -357,3 +357,20 @@ def UPSERT_ANALYSIS_ABC():
     """
     )
 
+
+def GET_PRODUCTS_SUMMARY_BY_RANGE(enterprise: str):
+    return ("""
+SELECT
+    COALESCE(SUM(md.amount), 0) AS total_amount,
+    COALESCE(SUM(md.amount - (md.cost_of_sale * md.quantity)), 0) AS profit,
+    COALESCE(SUM(md.quantity), 0) AS units_sold
+FROM movements_detail md
+JOIN product p ON md.product_id = p.id
+JOIN movements m ON md.movement_id = m.id
+WHERE p.catalog_id = %s 
+    AND p.family_id = %s 
+    AND p.subfamily_id = %s
+    AND md.movement_detail_date BETWEEN %s AND %s
+    AND m.movement_type = 2 
+    AND m.canceled = false"""
+)

@@ -76,6 +76,9 @@ export class DataTable {
         if (!this.thead) {
             console.warn("No thead registered in datatable")
         }
+
+        this.thead.innerHTML = ''
+
         this.columns.forEach(tableColumn => {
             let th
 

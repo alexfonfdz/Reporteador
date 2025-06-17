@@ -12,14 +12,18 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
-from apps.home.models import ProductABC, AnalysisABC, Family, SubFamily, Brand, Catalog
+from apps.home.models import ProductABC, AnalysisABC, Family, SubFamily, Brand, Catalog, Movements
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_UPDATE_ALL_DATES
 import mysql.connector as m
 import json
 import asyncio
 import psycopg2 as p
 import pandas as pd
+import aiomysql
 from .product_abc_logic import enterprises
+from apps.home.queries.mysql import GET_PRODUCTS_SUMMARY_BY_RANGE
+from django.db.models import Min
+from django.db.models.functions import ExtractYear
 
 
 @login_required(login_url="/login/")
@@ -332,15 +336,15 @@ def get_enterprises(request):
 @csrf_exempt
 def get_products_abc(request):
     if request.method != 'GET':
-        return HttpResponseNotAllowed(['Get'])
+        return HttpResponseNotAllowed(['GET'])
 
     # Obtener filtros desde searchParams
     family = request.GET.get('family', '').strip()
     subfamily = request.GET.get('subfamily', '').strip()
     brand = request.GET.get('brand', '').strip()
     catalog = request.GET.get('catalog', '').strip()
-    year_start = request.GET.get('year_start', '').strip()
-    year_end = request.GET.get('year_end', '').strip()
+    date_start = request.GET.get('date_start', '').strip()
+    date_end = request.GET.get('date_end', '').strip()
     enterprise_key = request.GET.get('enterprise', '').strip() 
 
     # Determinar el schema a partir del enterprise_key
@@ -364,73 +368,147 @@ def get_products_abc(request):
         qs = qs.filter(product__brand__name__icontains=brand)
     if catalog:
         qs = qs.filter(product__catalog__name__icontains=catalog)
-    # Filtro por rango de años
-    if year_start and year_end:
-        try:
-            qs = qs.filter(year__gte=int(year_start), year__lte=int(year_end))
-        except ValueError:
-            pass
-    elif year_start:
-        try:
-            qs = qs.filter(year__gte=int(year_start))
-        except ValueError:
-            pass
-    elif year_end:
-        try:
-            qs = qs.filter(year__lte=int(year_end))
-        except ValueError:
-            pass
     if schema:
         qs = qs.filter(enterprise=schema)
 
+    # Obtener los productos filtrados
     all_products = list(qs.all())
 
-    page = int(request.GET.get('page', 1))
-    per_page = int(request.GET.get('per_page', 10))
+    # Validar fecha mínima
+    min_date = Movements.objects.aggregate(min_date=Min('movement_date'))['min_date']
+    if not date_start or (min_date and date_start < min_date.strftime('%Y-%m-%d')):
+        return JsonResponse({"error": "La fecha de inicio debe ser igual o posterior a la fecha mínima de movimientos: %s" % (min_date.strftime('%Y-%m-%d') if min_date else '-')}, status=400)
 
-    paginator = Paginator(
-        object_list=all_products,
-        per_page=per_page
-    )
+    # Ajustar fecha final
+    date_start_val = date_start
+    date_end_val = None
+    if date_end:
+        date_end_val = date_end + " 23:59:59"
 
-    page_obj = paginator.get_page(page)
+    # Obtener años en el rango
+    years = []
+    if date_start and date_end:
+        try:
+            y_start = int(date_start[:4])
+            y_end = int(date_end[:4])
+            years = list(range(y_start, y_end + 1))
+        except Exception:
+            years = []
+    elif date_start:
+        try:
+            y_start = int(date_start[:4])
+            years = [y_start]
+        except Exception:
+            years = []
+
+    # Mapear product_id a sus totales por rango
+    async def fetch_totals():
+        results = {}
+        if not (date_start_val and date_end_val):
+            return results
+        conn = await aiomysql.connect(
+            host=ENV_MYSQL_HOST,
+            port=int(ENV_MYSQL_PORT),
+            user=ENV_MYSQL_USER,
+            password=ENV_MYSQL_PASSWORD,
+            db=ENV_MYSQL_NAME,
+            autocommit=True,
+        )
+        try:
+            async with conn.cursor() as cur:
+                for abc in all_products:
+                    product = abc.product
+                    family_id = product.family.id if product.family else None
+                    subfamily_id = product.subfamily.id if product.subfamily else None
+                    catalog_id = product.catalog.id if product.catalog else None
+                    if not (catalog_id and family_id and subfamily_id):
+                        continue
+                    await cur.execute(
+                        GET_PRODUCTS_SUMMARY_BY_RANGE(schema),
+                        (catalog_id, family_id, subfamily_id, date_start_val, date_end_val)
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        results[abc.id] = {
+                            "total_amount": float(row[0]) if row[0] is not None else 0,
+                            "profit": float(row[1]) if row[1] is not None else 0,
+                            "units_sold": float(row[2]) if row[2] is not None else 0,
+                        }
+        finally:
+            conn.close()
+        return results
+
+    # Recopilar datos ABC por año para stats
+    def get_abc_stats_by_year(product_abc, years):
+        stats = {}
+        for y in years:
+            try:
+                abc = ProductABC.objects.filter(
+                    product=product_abc.product,
+                    enterprise=product_abc.enterprise,
+                    year=int(y)
+                ).first()
+                if abc:
+                    stats[str(y)] = {
+                        "sales_percentage": float(abc.sales_percentage) if abc.sales_percentage is not None else None,
+                        "acc_sales_percentage": float(abc.acc_sales_percentage) if abc.acc_sales_percentage is not None else None,
+                        "sold_abc": abc.sold_abc,
+                        "profit_percentage": float(abc.profit_percentage) if abc.profit_percentage is not None else None,
+                        "acc_profit_percentage": float(abc.acc_profit_percentage) if abc.acc_profit_percentage is not None else None,
+                        "profit_abc": abc.profit_abc,
+                        "top_products": abc.top_products,
+                    }
+            except Exception as e:
+                continue
+        return stats
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    totals_map = loop.run_until_complete(fetch_totals())
+    loop.close()
+
     data = []
-    for abc in page_obj.object_list:
+    for abc in all_products:
         product = abc.product
-        data.append({
+        totals = totals_map.get(abc.id, {"total_amount": 0, "profit": 0, "units_sold": 0})
+        base = {
             "id": abc.id,
-            "sales_percentage": float(abc.sales_percentage) if abc.sales_percentage is not None else None,
-            "acc_sales_percentage": float(abc.acc_sales_percentage) if abc.acc_sales_percentage is not None else None,
-            "sold_abc": abc.sold_abc,
-            "profit_percentage": float(abc.profit_percentage) if abc.profit_percentage is not None else None,
-            "acc_profit_percentage": float(abc.acc_profit_percentage) if abc.acc_profit_percentage is not None else None,
-            "profit_abc": abc.profit_abc,
-            "top_products": abc.top_products,
             "enterprise": abc.enterprise,
-            "year": abc.year,
-            "last_update": abc.last_update.isoformat() if abc.last_update else None,
-            # Información del producto
             "product_id": product.id,
             "product_code": product.code,
             "product_description": product.description,
-            # Información de la familia
             "family_name": product.family.name if product.family else None,
-            # Información de la subfamilia
             "subfamily_name": product.subfamily.name if product.subfamily else None,
-            # Información de la marca
             "brand_name": product.brand.name if product.brand else None,
-            # Información del catálogo
             "catalog_name": product.catalog.name if product.catalog else None,
-        })
+            "total_amount": totals["total_amount"],
+            "profit": totals["profit"],
+            "units_sold": totals["units_sold"],
+            "year": abc.year,
+            "last_update": abc.last_update.isoformat() if abc.last_update else None,
+        }
+        # ...existing code for stats...
+        base["stats"] = get_abc_stats_by_year(abc, years)
+        data.append(base)
+
+    # Ordenar primero por total_amount descendente, luego por product_description ascendente
+    data.sort(key=lambda x: (-x.get("total_amount", 0), (x.get("product_description") or "").lower()))
+
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 10))
+    total_items = len(data)
+    num_pages = (total_items + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_data = data[start:end]
 
     pagination_data = {
-        "num_pages": paginator.num_pages,
-        "page": page_obj.number,
+        "num_pages": num_pages,
+        "page": page,
     }
 
-
     return JsonResponse({
-        "data": data,
+        "data": page_data,
         "pagination": pagination_data
     })
 
@@ -592,3 +670,205 @@ def get_catalogs(request):
     # If you want to filter by enterprise, add logic here
     catalogs = qs.values('name').distinct()
     return JsonResponse(list(catalogs), safe=False)
+
+@csrf_exempt
+def get_min_movements_date(request):
+    # Devuelve la fecha mínima de Movements
+    min_date = None
+    try:
+        min_date = Movements.objects.aggregate(min_date=Min('movement_date'))['min_date']
+    except Exception:
+        min_date = None
+    return JsonResponse({"min_date": min_date.isoformat() if min_date else None})
+
+@csrf_exempt
+def get_products_abc(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+
+    # Obtener filtros desde searchParams
+    family = request.GET.get('family', '').strip()
+    subfamily = request.GET.get('subfamily', '').strip()
+    brand = request.GET.get('brand', '').strip()
+    catalog = request.GET.get('catalog', '').strip()
+    date_start = request.GET.get('date_start', '').strip()
+    date_end = request.GET.get('date_end', '').strip()
+    enterprise_key = request.GET.get('enterprise', '').strip() 
+
+    # Determinar el schema a partir del enterprise_key
+    enterprise_data = enterprises.get(enterprise_key)
+    schema = enterprise_data.schema if enterprise_data else ''
+
+    # Construir el queryset con filtros
+    qs = ProductABC.objects.select_related(
+        'product',
+        'product__family',
+        'product__subfamily',
+        'product__brand',
+        'product__catalog'
+    )
+
+    if family:
+        qs = qs.filter(product__family__name__icontains=family)
+    if subfamily:
+        qs = qs.filter(product__subfamily__name__icontains=subfamily)
+    if brand:
+        qs = qs.filter(product__brand__name__icontains=brand)
+    if catalog:
+        qs = qs.filter(product__catalog__name__icontains=catalog)
+    if schema:
+        qs = qs.filter(enterprise=schema)
+
+    # Obtener los productos filtrados
+    all_products = list(qs.all())
+
+    # Validar fecha mínima
+    min_date = Movements.objects.aggregate(min_date=Min('movement_date'))['min_date']
+    if not date_start or (min_date and date_start < min_date.strftime('%Y-%m-%d')):
+        return JsonResponse({"error": "La fecha de inicio debe ser igual o posterior a la fecha mínima de movimientos: %s" % (min_date.strftime('%Y-%m-%d') if min_date else '-')}, status=400)
+
+    # Ajustar fecha final
+    date_start_val = date_start
+    date_end_val = None
+    if date_end:
+        date_end_val = date_end + " 23:59:59"
+
+    # Obtener años en el rango
+    years = []
+    if date_start and date_end:
+        try:
+            y_start = int(date_start[:4])
+            y_end = int(date_end[:4])
+            years = list(range(y_start, y_end + 1))
+        except Exception:
+            years = []
+    elif date_start:
+        try:
+            y_start = int(date_start[:4])
+            years = [y_start]
+        except Exception:
+            years = []
+
+    # Mapear product_id a sus totales por rango
+    async def fetch_totals():
+        results = {}
+        if not (date_start_val and date_end_val):
+            return results
+        conn = await aiomysql.connect(
+            host=ENV_MYSQL_HOST,
+            port=int(ENV_MYSQL_PORT),
+            user=ENV_MYSQL_USER,
+            password=ENV_MYSQL_PASSWORD,
+            db=ENV_MYSQL_NAME,
+            autocommit=True,
+        )
+        try:
+            async with conn.cursor() as cur:
+                for abc in all_products:
+                    product = abc.product
+                    family_id = product.family.id if product.family else None
+                    subfamily_id = product.subfamily.id if product.subfamily else None
+                    catalog_id = product.catalog.id if product.catalog else None
+                    if not (catalog_id and family_id and subfamily_id):
+                        continue
+                    await cur.execute(
+                        GET_PRODUCTS_SUMMARY_BY_RANGE(schema),
+                        (catalog_id, family_id, subfamily_id, date_start_val, date_end_val)
+                    )
+                    row = await cur.fetchone()
+                    if row:
+                        results[abc.id] = {
+                            "total_amount": float(row[0]) if row[0] is not None else 0,
+                            "profit": float(row[1]) if row[1] is not None else 0,
+                            "units_sold": float(row[2]) if row[2] is not None else 0,
+                        }
+        finally:
+            conn.close()
+        return results
+
+    # Recopilar datos ABC por año para stats
+    def get_abc_stats_by_year(product_abc, years):
+        stats = {}
+        for y in years:
+            try:
+                abc = ProductABC.objects.filter(
+                    product=product_abc.product,
+                    enterprise=product_abc.enterprise,
+                    year=int(y)
+                ).first()
+                if abc:
+                    stats[str(y)] = {
+                        "sales_percentage": float(abc.sales_percentage) if abc.sales_percentage is not None else None,
+                        "acc_sales_percentage": float(abc.acc_sales_percentage) if abc.acc_sales_percentage is not None else None,
+                        "sold_abc": abc.sold_abc,
+                        "profit_percentage": float(abc.profit_percentage) if abc.profit_percentage is not None else None,
+                        "acc_profit_percentage": float(abc.acc_profit_percentage) if abc.acc_profit_percentage is not None else None,
+                        "profit_abc": abc.profit_abc,
+                        "top_products": abc.top_products,
+                    }
+            except Exception as e:
+                continue
+        return stats
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    totals_map = loop.run_until_complete(fetch_totals())
+    loop.close()
+
+    data = []
+    for abc in all_products:
+        product = abc.product
+        totals = totals_map.get(abc.id, {"total_amount": 0, "profit": 0, "units_sold": 0})
+        base = {
+            "id": abc.id,
+            "enterprise": abc.enterprise,
+            "product_id": product.id,
+            "product_code": product.code,
+            "product_description": product.description,
+            "family_name": product.family.name if product.family else None,
+            "subfamily_name": product.subfamily.name if product.subfamily else None,
+            "brand_name": product.brand.name if product.brand else None,
+            "catalog_name": product.catalog.name if product.catalog else None,
+            "total_amount": totals["total_amount"],
+            "profit": totals["profit"],
+            "units_sold": totals["units_sold"],
+            "year": abc.year,
+            "last_update": abc.last_update.isoformat() if abc.last_update else None,
+        }
+
+            # stats por año
+        base["stats"] = get_abc_stats_by_year(abc, years)
+
+        data.append(base)
+
+    # Ordenar primero por total_amount descendente, luego por product_description ascendente
+    data.sort(key=lambda x: (-x.get("total_amount", 0), (x.get("product_description") or "").lower()))
+
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 10))
+    total_items = len(data)
+    num_pages = (total_items + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_data = data[start:end]
+
+    pagination_data = {
+        "num_pages": num_pages,
+        "page": page,
+    }
+
+    return JsonResponse({
+        "data": page_data,
+        "pagination": pagination_data
+    })
+
+    pagination_data = {
+        "num_pages": num_pages,
+        "page": page,
+    }
+
+    return JsonResponse({
+        "data": page_data,
+        "pagination": pagination_data
+    })
+
