@@ -20,7 +20,7 @@
                             <div class="col-md-3">
                                 <label for="enterprises-filter" class="form-label">Empresa</label>
                                  <select name="enterprise" id="enterprises-filter" class="form-control" aria-label="Filtrar por empresa" aria-describedby="basic-addon1">
-                                    <option value="">Cualquiera</option>
+                                    <option value="">General</option>
                                     <option value="TODOS">Todas</option>
                                  </select>
                             </div>
@@ -37,19 +37,19 @@
                                 <datalist id="subfamily-list"></datalist>
                                 <div id="subfamily-error" class="invalid-feedback" style="display:none"></div>
                             </div>
+                            <div class="col-md-3">
+                                <label for="top_products-filter" class="form-label">Productos Top</label>
+                                <input name="top_product" id="top_products-filter" class="form-control" placeholder="AA" autocomplete="off">
+                                <div id="top_product-error" class="invalid-feedback" style="display:none"></div>
+                            </div>
                        </div>
                         <br/>
 
                        <div class="row">
                         <div class="col-md-3">
-                                <label for="year-start-filter" class="form-label">Año inicio</label>
-                                <input type="number" name="year_start" id="year-start-filter" class="form-control" placeholder="Ej. 2020" aria-label="Año inicio" aria-describedby="basic-addon1" min="1900">
-                                <div id="year-start-error" class="invalid-feedback" style="display:none"></div>
-                            </div>
-                            <div class="col-md-3">
-                                <label for="year-end-filter" class="form-label">Año final</label>
-                                <input type="number" name="year_end" id="year-end-filter" class="form-control" placeholder="Ej. 2022" aria-label="Año final" aria-describedby="basic-addon1" min="1900">
-                                <div id="year-end-error" class="invalid-feedback" style="display:none"></div>
+                                <label for="year-filter" class="form-label">Año</label>
+                                <input type="number" name="year" id="year-filter" class="form-control" placeholder="Ej. 2020" aria-label="Año" aria-describedby="basic-addon1" min="1900">
+                                <div id="year-error" class="invalid-feedback" style="display:none"></div>
                             </div>
                        </div>
                        <button type="submit" class="btn btn-primary mt-2">Filtrar</button>

@@ -186,20 +186,21 @@ const tableColumns = [
 const tableBody = document.getElementById('clientes-table-body')
 const tableHead = tableBody.parentElement.children[0]
 
-function getAnalysisABC({ page, year_start, year_end, family, subfamily, enterprise }) {
+function getAnalysisABC({ page, year, family, subfamily, enterprise, top_product }) {
     const url = new URL('/getAnalysisABC', window.location.origin)
     if (page)
         url.searchParams.set('page', page)
-    if (year_start)
-        url.searchParams.set('year_start', year_start)
-    if (year_end)
-        url.searchParams.set('year_end', year_end)
+    if (year)
+        url.searchParams.set('year', year)
     if (family)
         url.searchParams.set('family', family)
     if (subfamily)
         url.searchParams.set('subfamily', subfamily)
     if (enterprise)
         url.searchParams.set('enterprise', enterprise)
+    if (top_product)
+        url.searchParams.set('top_product', top_product)
+
     url.searchParams.set('per_page', 10)
     return (
         fetch(url,
@@ -295,13 +296,11 @@ document.getElementById('last-page').addEventListener('click', async () => {
 })
 
 const filtersForm = document.getElementById('filter-form')
-const familyInput = document.getElementById('family-filter')
-const subfamilyInput = document.getElementById('subfamily-filter')
+const familyFilter = document.getElementById('family-filter')
 const familyList = document.getElementById('family-list')
 const subfamilyList = document.getElementById('subfamily-list')
 const enterprisesSelect = document.getElementById('enterprises-filter')
-const yearStartInput = document.getElementById('year-start-filter')
-const yearEndInput = document.getElementById('year-end-filter')
+const yearInput = document.getElementById('year-filter')
 
 // Cargar todas las familias únicas por nombre
 async function loadAllFamilies() {
@@ -312,12 +311,11 @@ async function loadAllFamilies() {
     const families = await res.json()
     const uniqueNames = new Set()
     families.forEach(fam => {
-        if (!uniqueNames.has(fam.name)) {
             const opt = document.createElement('option')
-            opt.value = fam.name
+            opt.value = fam
+            opt.textContent = fam
             familyList.appendChild(opt)
-            uniqueNames.add(fam.name)
-        }
+            uniqueNames.add(fam)
     })
 }
 
@@ -330,62 +328,86 @@ async function loadAllSubfamilies() {
     const subfamilies = await res.json()
     const uniqueNames = new Set()
     subfamilies.forEach(subfam => {
-        if (!uniqueNames.has(subfam.name)) {
             const opt = document.createElement('option')
-            opt.value = subfam.name
+            opt.value = subfam
+            opt.textContent = subfam
             subfamilyList.appendChild(opt)
-            uniqueNames.add(subfam.name)
-        }
+            uniqueNames.add(subfam)
     })
 }
 
 // Cargar familias según la empresa seleccionada
 async function loadFamilies(enterprise) {
     familyList.innerHTML = ''
-    if (!enterprise) {
-        subfamilyList.innerHTML = ''
-        return
-    }
+
     const url = new URL('/getFamilies', window.location.origin)
-    url.searchParams.set('enterprise', enterprise)
+    if(enterprise)
+        url.searchParams.set('enterprise', enterprise)
+
     const res = await fetch(url)
     if (!res.ok) return
     const families = await res.json()
     families.forEach(fam => {
         const opt = document.createElement('option')
-        opt.value = fam.name
+        opt.textContent = fam
+        opt.value = fam
         familyList.appendChild(opt)
     })
-    // Limpiar subfamilias al cambiar empresa
-    subfamilyList.innerHTML = ''
 }
 
 // Cargar subfamilias según la empresa y familia seleccionada
-async function loadSubfamilies(enterprise) {
+async function loadSubfamilies(enterprise, family) {
     subfamilyList.innerHTML = ''
-    if (!enterprise) return
     const url = new URL('/getSubfamilies', window.location.origin)
+
+    if (enterprise)
+        url.searchParams.set('enterprise', enterprise)
+
+    if (family)
+        url.searchParams.set('family', family)
+
     url.searchParams.set('enterprise', enterprise)
     const res = await fetch(url)
     if (!res.ok) return
     const subfamilies = await res.json()
     subfamilies.forEach(subfam => {
         const opt = document.createElement('option')
-        opt.value = subfam.name
+        opt.value = subfam
+        opt.textContent = subfam
         subfamilyList.appendChild(opt)
     })
 }
 
 // Evento para actualizar familias y subfamilias al cambiar empresa
+let enterpriseFilterTimeoutId = null
 enterprisesSelect.addEventListener('change', async (e) => {
     const enterprise = e.target.value
-    if (!enterprise) {
-        await loadAllFamilies()
-        await loadAllSubfamilies()
-    } else {
-        await loadFamilies(enterprise)
-        await loadSubfamilies(enterprise)
-    }
+    clearTimeout(enterpriseFilterTimeoutId)
+
+    enterpriseFilterTimeoutId = setTimeout(async () => {
+        if (!enterprise) {
+            await loadAllFamilies()
+            await loadAllSubfamilies()
+        } else {
+            await loadFamilies(enterprise)
+            await loadSubfamilies(enterprise, familyFilter.value)
+        }
+    })
+
+})
+
+let familyFilterTimeoutId = null
+familyFilter.addEventListener('input', async (e) => {
+    const enterprise = enterprisesSelect.value
+    const family = e.target.value
+
+    clearTimeout(familyFilterTimeoutId)
+
+    familyFilterTimeoutId = setTimeout(async () => {
+        await loadSubfamilies(enterprise, family)
+    }, 500)
+
+
 })
 
 
@@ -417,25 +439,17 @@ filtersForm.addEventListener('submit', async (e) => {
             el.textContent = ""
         }
     }
-    clearError("year-start-error")
-    clearError("year-end-error")
+    clearError("year-error")
     clearError("family-error")
     clearError("subfamily-error")
 
     let hasError = false
 
-    // Validar años
-    const yearStart = filters.year_start
-    const yearEnd = filters.year_end
-    if (!yearStart) {
-        const el = document.getElementById("year-start-error")
-        el.textContent = "El año de inicio es obligatorio."
-        el.style.display = "block"
-        hasError = true
-    }
-    if (!yearEnd) {
-        const el = document.getElementById("year-end-error")
-        el.textContent = "El año final es obligatorio."
+    // Validar año
+    const year = filters.year
+    if (!year) {
+        const el = document.getElementById("year-error")
+        el.textContent = "El año es obligatorio."
         el.style.display = "block"
         hasError = true
     }

@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from datetime import datetime, date
 from django.views.decorators.csrf import csrf_exempt
-from apps.home.models import ProductABC, AnalysisABC, Family, SubFamily, Brand, Catalog, Movements
+from apps.home.models import ProductABC, AnalysisABC, Family, SubFamily, Brand, Catalog, Movements, Product
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_UPDATE_ALL_DATES
 import mysql.connector as m
 import json
@@ -520,8 +520,8 @@ def get_analysis_abc(request):
     # Obtener filtros desde searchParams
     family = request.GET.get('family', '').strip()
     subfamily = request.GET.get('subfamily', '').strip()
-    year_start = request.GET.get('year_start', '').strip()
-    year_end = request.GET.get('year_end', '').strip()
+    year = request.GET.get('year', '').strip()
+    top_product = request.GET.get('top_product', '').strip()
     enterprise_key = request.GET.get('enterprise', '').strip()
 
     # Determinar el schema a partir del enterprise_key
@@ -539,22 +539,14 @@ def get_analysis_abc(request):
         qs = qs.filter(family__name__icontains=family)
     if subfamily:
         qs = qs.filter(subfamily__name__icontains=subfamily)
-    # Filtro por rango de años
-    if year_start and year_end:
+    if top_product:
+        qs = qs.filter(top_products__icontains=top_product) 
+    if year:
         try:
-            qs = qs.filter(year__gte=int(year_start), year__lte=int(year_end))
+            qs = qs.filter(year=int(year))
         except ValueError:
             pass
-    elif year_start:
-        try:
-            qs = qs.filter(year__gte=int(year_start))
-        except ValueError:
-            pass
-    elif year_end:
-        try:
-            qs = qs.filter(year__lte=int(year_end))
-        except ValueError:
-            pass
+    
     if schema:
         qs = qs.filter(enterprise=schema)
 
@@ -621,30 +613,52 @@ def get_families(request):
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
     enterprise = request.GET.get('enterprise', '').strip()
-    qs = Family.objects.all()
+
+    qs = Product.objects.select_related('family')
     if enterprise:
-        enterprise_data = enterprises.get(enterprise)
-        if enterprise_data:
-            enterprise = enterprise_data.schema
-        qs = qs.filter(enterprise=enterprise)
-    # Solo nombres únicos
-    families = qs.values('name').distinct()
-    return JsonResponse(list(families), safe=False)
+        qs.filter(enterprise=enterprise)
+
+    families = qs.values('family__name').distinct()
+    families_names = set()
+    
+    for qs_result in families.iterator():
+        name = qs_result['family__name']
+        if name: 
+            families_names.add(name)
+    
+    
+    return JsonResponse(list(families_names), safe=False)
 
 @csrf_exempt
 def get_subfamilies(request):
     if request.method != 'GET':
         return HttpResponseNotAllowed(['GET'])
+    family = request.GET.get('family', '').strip()
     enterprise = request.GET.get('enterprise', '').strip()
-    qs = SubFamily.objects.all()
+
+
+    #Get all the     
+    qs = Product.objects.select_related('family', 'subfamily')
     if enterprise:
         enterprise_data = enterprises.get(enterprise)
         if enterprise_data:
             enterprise = enterprise_data.schema
             qs = qs.filter(enterprise=enterprise)
-    # Solo nombres únicos
-    subfamilies = qs.values('name').distinct()
-    return JsonResponse(list(subfamilies), safe=False)
+    
+    if family:
+        qs = qs.filter(family__name__icontains=family)
+
+    # Solo nombres únicos de subfamilia
+    subfamilies = qs.values('subfamily__name').distinct()
+
+    subfamilies_names = set()
+    
+    for qs_result in subfamilies.iterator():
+        name = qs_result['subfamily__name']
+        if name: 
+            subfamilies_names.add(name)
+    
+    return JsonResponse(list(subfamilies_names), safe=False)
 
 @csrf_exempt
 def get_brands(request):
@@ -861,14 +875,3 @@ def get_products_abc(request):
         "data": page_data,
         "pagination": pagination_data
     })
-
-    pagination_data = {
-        "num_pages": num_pages,
-        "page": page,
-    }
-
-    return JsonResponse({
-        "data": page_data,
-        "pagination": pagination_data
-    })
-

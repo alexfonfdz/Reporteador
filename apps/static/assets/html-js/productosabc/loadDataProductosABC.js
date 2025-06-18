@@ -360,7 +360,7 @@ document.getElementById('last-page').addEventListener('click', async () => {
 })
 
 const filtersForm = document.getElementById('filter-form')
-const familyInput = document.getElementById('family-filter')
+const familyFilter = document.getElementById('family-filter')
 const subfamilyInput = document.getElementById('subfamily-filter')
 const brandInput = document.getElementById('brand-filter')
 const catalogInput = document.getElementById('catalog-filter')
@@ -394,12 +394,11 @@ async function loadAllFamilies() {
     const families = await res.json()
     const uniqueNames = new Set()
     families.forEach(fam => {
-        if (!uniqueNames.has(fam.name)) {
-            const opt = document.createElement('option')
-            opt.value = fam.name
-            familyList.appendChild(opt)
-            uniqueNames.add(fam.name)
-        }
+        const opt = document.createElement('option')
+        opt.value = fam
+        opt.textContent = fam
+        familyList.appendChild(opt)
+        uniqueNames.add(fam)
     })
 }
 
@@ -412,12 +411,10 @@ async function loadAllSubfamilies() {
     const subfamilies = await res.json()
     const uniqueNames = new Set()
     subfamilies.forEach(subfam => {
-        if (!uniqueNames.has(subfam.name)) {
-            const opt = document.createElement('option')
-            opt.value = subfam.name
-            subfamilyList.appendChild(opt)
-            uniqueNames.add(subfam.name)
-        }
+        const opt = document.createElement('option')
+        opt.value = subfam
+        subfamilyList.appendChild(opt)
+        uniqueNames.add(subfam)
     })
 }
 
@@ -471,23 +468,29 @@ async function loadFamilies(enterprise) {
     const families = await res.json()
     families.forEach(fam => {
         const opt = document.createElement('option')
-        opt.value = fam.name
+        opt.textContent = fam
+        opt.value = fam
         familyList.appendChild(opt)
     })
 }
 
 // Cargar subfamilias según la empresa y familia seleccionada
-async function loadSubfamilies(enterprise) {
+async function loadSubfamilies(enterprise, family) {
     subfamilyList.innerHTML = ''
-    if (!enterprise) return
+
     const url = new URL('/getSubfamilies', window.location.origin)
-    url.searchParams.set('enterprise', enterprise)
+    if(enterprise)
+        url.searchParams.set('enterprise', enterprise)
+    if (family)
+        url.searchParams.set('family', family)
+
     const res = await fetch(url)
     if (!res.ok) return
     const subfamilies = await res.json()
     subfamilies.forEach(subfam => {
         const opt = document.createElement('option')
-        opt.value = subfam.name
+        opt.value = subfam
+        opt.textContent = subfam
         subfamilyList.appendChild(opt)
     })
 }
@@ -525,20 +528,44 @@ async function loadCatalogs(enterprise) {
 }
 
 // Evento para actualizar familias, subfamilias, marcas y catálogos al cambiar empresa
+let enterpriseFilterTimeoutId
 enterprisesSelect.addEventListener('change', async (e) => {
     const enterprise = e.target.value
-    if (!enterprise) {
-        await loadAllFamilies()
-        await loadAllSubfamilies()
-        await loadAllBrands()
-        await loadAllCatalogs()
-    } else {
-        await loadFamilies(enterprise)
-        await loadSubfamilies(enterprise)
-        await loadBrands(enterprise)
-        await loadCatalogs(enterprise)
-    }
+    clearTimeout(enterpriseFilterTimeoutId)
+    enterpriseFilterTimeoutId = setTimeout(async () => {
+
+        if (!enterprise) {
+            await loadAllFamilies()
+            await loadAllSubfamilies()
+            await loadAllBrands()
+            await loadAllCatalogs()
+        } else {
+            await loadFamilies(enterprise)
+            await loadSubfamilies(enterprise, familyFilter.value)
+            await loadBrands(enterprise)
+            await loadCatalogs(enterprise)
+        }
+    })
 })
+
+let familyFilterTimeoutId = null
+
+function handleFamilyFilter(e) {
+    const enterprise = enterprisesSelect.value
+    const family = e.target.value
+    
+    
+    if(familyFilterTimeoutId) {
+        clearTimeout(familyFilterTimeoutId)
+    }
+    
+    familyFilterTimeoutId = setTimeout(async () => {
+        await loadSubfamilies(enterprise, family)
+    }, 500)
+}
+
+familyFilter.addEventListener('input', handleFamilyFilter)
+
 
 
 // Inicializar datalists al cargar la página
