@@ -236,6 +236,7 @@ function getEnterprises() {
         })
 }
 
+
 const params = new URLSearchParams(window.location.search)
 const table = new DataTable({
     columns: tableColumns,
@@ -243,8 +244,13 @@ const table = new DataTable({
     thead: tableHead,
     page: Number(params.get('page')) ?? 0,
     service: async ({ page, filters }) => {
-        const pageObj = await getAnalysisABC({ page, ...filters })
-        return pageObj
+        showLoader();
+        try {
+            const pageObj = await getAnalysisABC({ page, ...filters });
+            return pageObj;
+        } finally {
+            hideLoader();
+        }
     }
 })
 
@@ -300,6 +306,8 @@ const familyFilter = document.getElementById('family-filter')
 const familyList = document.getElementById('family-list')
 const subfamilyList = document.getElementById('subfamily-list')
 const enterprisesSelect = document.getElementById('enterprises-filter')
+const topProductsFilter = document.getElementById('top_products-filter')
+const topProductsList = document.getElementById('top_product-list')
 const yearInput = document.getElementById('year-filter')
 
 // Cargar todas las familias únicas por nombre
@@ -378,6 +386,31 @@ async function loadSubfamilies(enterprise, family) {
     })
 }
 
+async function loadTopProducts(enterprise, year, family, subfamily){
+    const url = new URL('/getTopProducts', window.location.origin)
+
+    if (enterprise)
+        url.searchParams.set('enterprise', enterprise)
+    if (year)
+        url.searchParams.set('year', year)
+    if (family)
+        url.searchParams.set('family', family)
+    if (subfamily)
+        url.searchParams.set('subfamily', subfamily)
+
+    const res = await fetch(url)
+    if (!res.ok) return
+    const topProducts = await res.json()
+
+    topProducts.forEach(topProduct => {
+        const opt = document.createElement('option')
+        opt.value = topProduct
+        opt.textContent = topProduct
+        topProductsList.appendChild(opt)
+    })
+    
+}
+
 // Evento para actualizar familias y subfamilias al cambiar empresa
 let enterpriseFilterTimeoutId = null
 enterprisesSelect.addEventListener('change', async (e) => {
@@ -411,10 +444,39 @@ familyFilter.addEventListener('input', async (e) => {
 })
 
 
+// Agrega el loader HTML al DOM
+function showLoader() {
+    let loader = document.getElementById('abc-loader');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'abc-loader';
+        loader.style.position = 'absolute';
+        loader.style.top = '0';
+        loader.style.left = '0';
+        loader.style.width = '100%';
+        loader.style.height = '100%';
+        loader.style.background = 'rgba(255,255,255,0.7)';
+        loader.style.display = 'flex';
+        loader.style.alignItems = 'center';
+        loader.style.justifyContent = 'center';
+        loader.style.zIndex = '1000';
+        loader.innerHTML = `<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>`;
+        tableBody.parentElement.parentElement.style.position = 'relative';
+        tableBody.parentElement.appendChild(loader);
+    }
+    loader.style.display = 'flex';
+}
+
+function hideLoader() {
+    const loader = document.getElementById('abc-loader');
+    if (loader) loader.style.display = 'none';
+}
+
 // Inicializar datalists al cargar la página
 document.addEventListener('DOMContentLoaded', async () => {
     await loadAllFamilies()
     await loadAllSubfamilies()
+    await loadTopProducts()
 })
 
 getEnterprises().then(enterprises => {
@@ -469,6 +531,7 @@ filtersForm.addEventListener('submit', async (e) => {
     if (hasError) {
         return
     }
-
-    table.updateSearchState({ filters })
+    showLoader();
+    await table.updateSearchState({ filters })
+    hideLoader();
 })

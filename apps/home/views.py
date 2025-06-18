@@ -607,6 +607,43 @@ def get_analysis_abc(request):
         "data": data,
         "pagination": pagination_data
     })
+    
+@csrf_exempt
+def get_product_top(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+
+    enterprise = request.GET.get('enterprise', '').strip()
+    year = request.GET.get('year', '').strip()
+    family = request.GET.get('family', '').strip()
+    subfamily = request.GET.get('subfamily', '').strip()
+
+    
+    qs = ProductABC.objects.select_related('product__family', 'product__subfamily')
+
+    if enterprise:
+        qs = qs.filter(enterprise=enterprise)
+
+    if year:
+        qs = qs.filter(year=year)
+
+    if family:
+        qs = qs.filter(product__family__name__icontains=family)
+
+    if subfamily:
+        qs = qs.filter(product__subfamily__name__icontains=subfamily)
+
+    top_products_result = qs.values('top_products').distinct()
+    top_products = []
+
+    for qs_result in top_products_result.iterator():
+        top_product_value = qs_result['top_products']
+        if top_product_value:
+            top_products.append(top_product_value)
+
+    return JsonResponse(list(top_products), safe=False)
+
+
 
 @csrf_exempt
 def get_families(request):

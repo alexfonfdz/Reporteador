@@ -2,7 +2,31 @@ import { DataTable } from "../utils/data_table.js"
 
 
 
-
+function showLoader() {
+    let loader = document.getElementById('abc-loader');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'abc-loader';
+        loader.style.position = 'absolute';
+        loader.style.top = '0';
+        loader.style.left = '0';
+        loader.style.width = '100%';
+        loader.style.height = '100%';
+        loader.style.background = 'rgba(255,255,255,0.7)';
+        loader.style.display = 'flex';
+        loader.style.alignItems = 'center';
+        loader.style.justifyContent = 'center';
+        loader.style.zIndex = '1000';
+        loader.innerHTML = `<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>`;
+        tableBody.parentElement.parentElement.style.position = 'relative';
+        tableBody.parentElement.appendChild(loader);
+    }
+    loader.style.display = 'flex';
+}
+function hideLoader() {
+    const loader = document.getElementById('abc-loader');
+    if (loader) loader.style.display = 'none';
+}
 
 const currencyFormatter = ({ currentValue }) => {
     let numberValue
@@ -285,25 +309,26 @@ const table = new DataTable({
     thead: tableHead,
     page: Number(params.get('page')) ?? 0,
     service: async ({ page, filters }) => {
-        const pageObj = await getProductosABC({ page, ...filters })
-        // Adaptar para la nueva estructura
-        if (pageObj && pageObj.data && pageObj.pagination) {
-
-            if (pageObj.data && pageObj.data.length){
-                const years = Object.keys(pageObj.data[0]['stats'])
-                const newColumns = getTableColumns(years)
-                table.columns = newColumns
-                table.loadHeaders() 
+        showLoader();
+        try {
+            const pageObj = await getProductosABC({ page, ...filters })
+            // Adaptar para la nueva estructura
+            if (pageObj && pageObj.data && pageObj.pagination) {
+                if (pageObj.data && pageObj.data.length){
+                    const years = Object.keys(pageObj.data[0]['stats'])
+                    const newColumns = getTableColumns(years)
+                    table.columns = newColumns
+                    table.loadHeaders() 
+                }
+                return {
+                    data: pageObj.data,
+                    pagination: pageObj.pagination
+                }
             }
-
-            
-
-            return {
-                data: pageObj.data,
-                pagination: pageObj.pagination
-            }
+            return pageObj
+        } finally {
+            hideLoader();
         }
-        return pageObj
     }
 })
 table.setOnPageChange((pagination) => {
@@ -656,7 +681,7 @@ filtersForm.addEventListener('submit', async (e) => {
     if (hasError) {
         return
     }
+    await table.updateSearchState({ filters })
 
-    table.updateSearchState({ filters })
 })
 
