@@ -180,7 +180,223 @@ const tableColumns = [
         column: "Productos Top",
         accessorKey: "top_products",
         preprocess: [topProductsFormatter]
-    }
+    },
+    {
+        column: "Venta U Enero",
+        accessorKey: "month_sale_u_january"
+    },
+    {
+        column: "Venta $ Enero",
+        accessorKey: "month_sale_p_january",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Enero",
+        accessorKey: "inventory_close_u_january"
+    },
+    {
+        column: "Inventario cierre $ Enero",
+        accessorKey: "inventory_close_p_january",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Febrero",
+        accessorKey: "month_sale_u_february"
+    },
+    {
+        column: "Venta $ Febrero",
+        accessorKey: "month_sale_p_february",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Febrero",
+        accessorKey: "inventory_close_u_february"
+    },
+    {
+        column: "Inventario cierre $ Febrero",
+        accessorKey: "inventory_close_p_february",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Marzo",
+        accessorKey: "month_sale_u_march"
+    },
+    {
+        column: "Venta $ Marzo",
+        accessorKey: "month_sale_p_march",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Marzo",
+        accessorKey: "inventory_close_u_march"
+    },
+    {
+        column: "Inventario cierre $ Marzo",
+        accessorKey: "inventory_close_p_march",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Abril",
+        accessorKey: "month_sale_u_april"
+    },
+    {
+        column: "Venta $ Abril",
+        accessorKey: "month_sale_p_april",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Abril",
+        accessorKey: "inventory_close_u_april"
+    },
+    {
+        column: "Inventario cierre $ Abril",
+        accessorKey: "inventory_close_p_april",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Mayo",
+        accessorKey: "month_sale_u_may"
+    },
+    {
+        column: "Venta $ Mayo",
+        accessorKey: "month_sale_p_may",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Mayo",
+        accessorKey: "inventory_close_u_may"
+    },
+    {
+        column: "Inventario cierre $ Mayo",
+        accessorKey: "inventory_close_p_may",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Junio",
+        accessorKey: "month_sale_u_june"
+    },
+    {
+        column: "Venta $ Junio",
+        accessorKey: "month_sale_p_june",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Junio",
+        accessorKey: "inventory_close_u_june"
+    },
+    {
+        column: "Inventario cierre $ Junio",
+        accessorKey: "inventory_close_p_june",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Julio",
+        accessorKey: "month_sale_u_july"
+    },
+    {
+        column: "Venta $ Julio",
+        accessorKey: "month_sale_p_july",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Julio",
+        accessorKey: "inventory_close_u_july"
+    },
+    {
+        column: "Inventario cierre $ Julio",
+        accessorKey: "inventory_close_p_july",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Agosto",
+        accessorKey: "month_sale_u_august"
+    },
+    {
+        column: "Venta $ Agosto",
+        accessorKey: "month_sale_p_august",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Agosto",
+        accessorKey: "inventory_close_u_august"
+    },
+    {
+        column: "Inventario cierre $ Agosto",
+        accessorKey: "inventory_close_p_august",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Septiembre",
+        accessorKey: "month_sale_u_september"
+    },
+    {
+        column: "Venta $ Septiembre",
+        accessorKey: "month_sale_p_september",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Septiembre",
+        accessorKey: "inventory_close_u_september"
+    },
+    {
+        column: "Inventario cierre $ Septiembre",
+        accessorKey: "inventory_close_p_september",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Octubre",
+        accessorKey: "month_sale_u_october"
+    },
+    {
+        column: "Venta $ Octubre",
+        accessorKey: "month_sale_p_october",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Octubre",
+        accessorKey: "inventory_close_u_october"
+    },
+    {
+        column: "Inventario cierre $ Octubre",
+        accessorKey: "inventory_close_p_october",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Noviembre",
+        accessorKey: "month_sale_u_november"
+    },
+    {
+        column: "Venta $ Noviembre",
+        accessorKey: "month_sale_p_november",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Noviembre",
+        accessorKey: "inventory_close_u_november"
+    },
+    {
+        column: "Inventario cierre $ Noviembre",
+        accessorKey: "inventory_close_p_november",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Venta U Diciembre",
+        accessorKey: "month_sale_u_december"
+    },
+    {
+        column: "Venta $ Diciembre",
+        accessorKey: "month_sale_p_december",
+        preprocess: [currencyFormatter]
+    },
+    {
+        column: "Inventario cierre U Diciembre",
+        accessorKey: "inventory_close_u_december"
+    },
+    {
+        column: "Inventario cierre $ Diciembre",
+        accessorKey: "inventory_close_p_december",
+        preprocess: [currencyFormatter]
+    },
 ]
 
 const tableBody = document.getElementById('clientes-table-body')
@@ -309,6 +525,9 @@ const enterprisesSelect = document.getElementById('enterprises-filter')
 const topProductsFilter = document.getElementById('top_products-filter')
 const topProductsList = document.getElementById('top_product-list')
 const yearInput = document.getElementById('year-filter')
+
+yearInput.value = new Date().getFullYear()
+
 
 // Cargar todas las familias únicas por nombre
 async function loadAllFamilies() {
@@ -488,8 +707,7 @@ getEnterprises().then(enterprises => {
     })
 })
 
-filtersForm.addEventListener('submit', async (e) => {
-    e.preventDefault()
+const handleSubmit = async () => {
     const formData = new FormData(filtersForm)
     const filters = Object.fromEntries(formData.entries())
 
@@ -516,17 +734,6 @@ filtersForm.addEventListener('submit', async (e) => {
         hasError = true
     }
 
-    // Validar al menos un filtro de familia o subfamilia
-    const family = filters.family
-    const subfamily = filters.subfamily
-    if (!family && !subfamily) {
-        ["family-error", "subfamily-error"].forEach(id => {
-            const el = document.getElementById(id)
-            el.textContent = "Debes ingresar al menos un filtro en familia o subfamilia."
-            el.style.display = "block"
-        })
-        hasError = true
-    }
 
     if (hasError) {
         return
@@ -534,4 +741,7 @@ filtersForm.addEventListener('submit', async (e) => {
     showLoader();
     await table.updateSearchState({ filters })
     hideLoader();
-})
+}
+
+filtersForm.addEventListener('submit', (e) => {e.preventDefault(); handleSubmit()})
+handleSubmit()

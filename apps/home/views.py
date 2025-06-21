@@ -552,7 +552,7 @@ def get_analysis_abc(request):
     if schema:
         qs = qs.filter(enterprise=schema)
 
-    qs.order_by('total_amount')
+    qs = qs.order_by('-total_amount')
 
     all_analysis = list(qs.all())
     
@@ -598,6 +598,55 @@ def get_analysis_abc(request):
             "subfamily_name": analysis.subfamily.name if analysis.subfamily else None,
             # Información del catálogo
             "catalog_name": analysis.catalog.name if analysis.catalog else None,
+            # Agregar todos los campos mensuales de ventas e inventario
+            "month_sale_u_january": float(analysis.month_sale_u_january) if analysis.month_sale_u_january is not None else None,
+            "month_sale_p_january": float(analysis.month_sale_p_january) if analysis.month_sale_p_january is not None else None,
+            "inventory_close_u_january": float(analysis.inventory_close_u_january) if analysis.inventory_close_u_january is not None else None,
+            "inventory_close_p_january": float(analysis.inventory_close_p_january) if analysis.inventory_close_p_january is not None else None,
+            "month_sale_u_february": float(analysis.month_sale_u_february) if analysis.month_sale_u_february is not None else None,
+            "month_sale_p_february": float(analysis.month_sale_p_february) if analysis.month_sale_p_february is not None else None,
+            "inventory_close_u_february": float(analysis.inventory_close_u_february) if analysis.inventory_close_u_february is not None else None,
+            "inventory_close_p_february": float(analysis.inventory_close_p_february) if analysis.inventory_close_p_february is not None else None,
+            "month_sale_u_march": float(analysis.month_sale_u_march) if analysis.month_sale_u_march is not None else None,
+            "month_sale_p_march": float(analysis.month_sale_p_march) if analysis.month_sale_p_march is not None else None,
+            "inventory_close_u_march": float(analysis.inventory_close_u_march) if analysis.inventory_close_u_march is not None else None,
+            "inventory_close_p_march": float(analysis.inventory_close_p_march) if analysis.inventory_close_p_march is not None else None,
+            "month_sale_u_april": float(analysis.month_sale_u_april) if analysis.month_sale_u_april is not None else None,
+            "month_sale_p_april": float(analysis.month_sale_p_april) if analysis.month_sale_p_april is not None else None,
+            "inventory_close_u_april": float(analysis.inventory_close_u_april) if analysis.inventory_close_u_april is not None else None,
+            "inventory_close_p_april": float(analysis.inventory_close_p_april) if analysis.inventory_close_p_april is not None else None,
+            "month_sale_u_may": float(analysis.month_sale_u_may) if analysis.month_sale_u_may is not None else None,
+            "month_sale_p_may": float(analysis.month_sale_p_may) if analysis.month_sale_p_may is not None else None,
+            "inventory_close_u_may": float(analysis.inventory_close_u_may) if analysis.inventory_close_u_may is not None else None,
+            "inventory_close_p_may": float(analysis.inventory_close_p_may) if analysis.inventory_close_p_may is not None else None,
+            "month_sale_u_june": float(analysis.month_sale_u_june) if analysis.month_sale_u_june is not None else None,
+            "month_sale_p_june": float(analysis.month_sale_p_june) if analysis.month_sale_p_june is not None else None,
+            "inventory_close_u_june": float(analysis.inventory_close_u_june) if analysis.inventory_close_u_june is not None else None,
+            "inventory_close_p_june": float(analysis.inventory_close_p_june) if analysis.inventory_close_p_june is not None else None,
+            "month_sale_u_july": float(analysis.month_sale_u_july) if analysis.month_sale_u_july is not None else None,
+            "month_sale_p_july": float(analysis.month_sale_p_july) if analysis.month_sale_p_july is not None else None,
+            "inventory_close_u_july": float(analysis.inventory_close_u_july) if analysis.inventory_close_u_july is not None else None,
+            "inventory_close_p_july": float(analysis.inventory_close_p_july) if analysis.inventory_close_p_july is not None else None,
+            "month_sale_u_august": float(analysis.month_sale_u_august) if analysis.month_sale_u_august is not None else None,
+            "month_sale_p_august": float(analysis.month_sale_p_august) if analysis.month_sale_p_august is not None else None,
+            "inventory_close_u_august": float(analysis.inventory_close_u_august) if analysis.inventory_close_u_august is not None else None,
+            "inventory_close_p_august": float(analysis.inventory_close_p_august) if analysis.inventory_close_p_august is not None else None,
+            "month_sale_u_september": float(analysis.month_sale_u_september) if analysis.month_sale_u_september is not None else None,
+            "month_sale_p_september": float(analysis.month_sale_p_september) if analysis.month_sale_p_september is not None else None,
+            "inventory_close_u_september": float(analysis.inventory_close_u_september) if analysis.inventory_close_u_september is not None else None,
+            "inventory_close_p_september": float(analysis.inventory_close_p_september) if analysis.inventory_close_p_september is not None else None,
+            "month_sale_u_october": float(analysis.month_sale_u_october) if analysis.month_sale_u_october is not None else None,
+            "month_sale_p_october": float(analysis.month_sale_p_october) if analysis.month_sale_p_october is not None else None,
+            "inventory_close_u_october": float(analysis.inventory_close_u_october) if analysis.inventory_close_u_october is not None else None,
+            "inventory_close_p_october": float(analysis.inventory_close_p_october) if analysis.inventory_close_p_october is not None else None,
+            "month_sale_u_november": float(analysis.month_sale_u_november) if analysis.month_sale_u_november is not None else None,
+            "month_sale_p_november": float(analysis.month_sale_p_november) if analysis.month_sale_p_november is not None else None,
+            "inventory_close_u_november": float(analysis.inventory_close_u_november) if analysis.inventory_close_u_november is not None else None,
+            "inventory_close_p_november": float(analysis.inventory_close_p_november) if analysis.inventory_close_p_november is not None else None,
+            "month_sale_u_december": float(analysis.month_sale_u_december) if analysis.month_sale_u_december is not None else None,
+            "month_sale_p_december": float(analysis.month_sale_p_december) if analysis.month_sale_p_december is not None else None,
+            "inventory_close_u_december": float(analysis.inventory_close_u_december) if analysis.inventory_close_u_december is not None else None,
+            "inventory_close_p_december": float(analysis.inventory_close_p_december) if analysis.inventory_close_p_december is not None else None,
         })
 
     pagination_data = {

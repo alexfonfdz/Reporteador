@@ -16,6 +16,13 @@ def main():
             "available on your PYTHONPATH environment variable? Did you "
             "forget to activate a virtual environment?"
         ) from exc
+    
+    if sys.argv[1] == "cron":
+        from apps.home.cron_job import main as main_cron
+        import asyncio
+        asyncio.run(main_cron())
+        return
+        
     execute_from_command_line(sys.argv)
 
 if __name__ == '__main__':
