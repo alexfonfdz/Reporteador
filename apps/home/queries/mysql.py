@@ -52,7 +52,7 @@ ON DUPLICATE KEY UPDATE
 def UPDATE_PRODUCT_CATALOG(enterprise: str):
     return (
 f"""
-UPDATE product SET catalog_id = (SELECT id FROM catalog WHERE name = %s)
+UPDATE IGNORE product SET catalog_id = (SELECT id FROM catalog WHERE name = %s LIMIT 1)
 WHERE enterprise = '{enterprise}' AND code IN %s;
 """
 )
@@ -374,3 +374,23 @@ WHERE p.catalog_id = %s
     AND m.movement_type = 2 
     AND m.canceled = false"""
 )
+
+def DELETE_PRODUCT_ABC(enterprise: str):
+    return (f"""
+DELETE FROM product_abc WHERE enterprise = '{enterprise}';
+""")
+
+def DELETE_ANALISIS_ABC(enterprise: str):
+    return (f"""
+DELETE FROM analysis_abc WHERE enterprise = '{enterprise}';
+""")
+
+def DELETE_CATALOG():
+    return (f"""
+DELETE FROM catalog WHERE 1;
+""")
+
+def SET_NULL_CATALOG_ON_PRODUCT(enterprise: str):
+    return (f"""
+UPDATE product SET catalog_id = NULL WHERE enterprise = '{enterprise}';
+""")

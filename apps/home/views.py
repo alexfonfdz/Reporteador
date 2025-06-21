@@ -20,6 +20,8 @@ import asyncio
 import psycopg2 as p
 import pandas as pd
 import aiomysql
+import os
+from django.conf import settings
 from .product_abc_logic import enterprises
 from apps.home.queries.mysql import GET_PRODUCTS_SUMMARY_BY_RANGE
 from django.db.models import Min
@@ -912,3 +914,128 @@ def get_products_abc(request):
         "data": page_data,
         "pagination": pagination_data
     })
+
+@csrf_exempt
+def get_product_catalog(request):
+    if request.method != 'GET':
+        return HttpResponseNotAllowed(['GET'])
+
+    enterprise = request.GET.get('enterprise', '').strip()
+    family = request.GET.get('family', '').strip()
+    subfamily = request.GET.get('subfamily', '').strip()
+    brand = request.GET.get('brand', '').strip()
+    catalog = request.GET.get('catalog', '').strip()
+    description = request.GET.get('description', '').strip() 
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 10))
+
+
+    qs = Product.objects.all()
+    if enterprise:
+        qs = qs.filter(enterprise=enterprise)
+
+    if family:
+        qs = qs.filter(family__name__icontains=family)
+    
+    if subfamily:
+        qs = qs.filter(subfamily__name__icontains=subfamily)
+    
+    if brand:
+        qs = qs.filter(brand__name__icontains=brand)
+    
+    if catalog:
+        qs = qs.filter(catalog__name__icontains=catalog)
+    
+    if description:
+        qs = qs.filter(description__icontains=description)
+
+    qs = qs.order_by('code')
+    qs = qs.select_related('family', 'subfamily', 'brand', 'catalog')
+        
+    paginator = Paginator(qs.values('code', 'description', 'family__name', 'subfamily__name', 'brand__name', 'catalog__name'), per_page)
+    page_obj = paginator.get_page(page)
+
+    pagination = {
+        "num_pages": paginator.num_pages,
+        "page": page_obj.number,
+    }
+
+    return JsonResponse({
+        "data": list(page_obj),
+        "pagination": pagination
+    })
+
+
+
+#Una vista que acepte a un archivo excel y verifique que tiene una columna que se llame 
+# Catalogo o Catálogo y otra que se llame Código o Codigo
+
+@csrf_exempt
+def upload_catalog_file(request):
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    file = request.FILES.get('file')
+    enterprise = request.POST.get('enterprise')
+
+    if not file:
+        return JsonResponse({"success": False, "error": "No se recibió ningún archivo."}, status=400)
+
+    # Validar extensión
+    filename = file.name
+    if not (filename.endswith('.xlsx') or filename.endswith('.xls')):
+        return JsonResponse({"success": False, "error": "El archivo debe ser un Excel (.xlsx o .xls)."}, status=400)
+
+    # Validar la empresa
+    if not enterprise:
+        return JsonResponse({"success": False, "error": "No se proporcionó una empresa."}, status=400)
+    
+    enterprise_data = enterprises.get(enterprise)
+    if not enterprise_data:
+        return JsonResponse({"success": False, "error": "Empresa no válida."}, status=400)
+    
+    enterprise = enterprise_data.schema
+    
+    # Leer archivo excel
+    try:
+        df = pd.read_excel(file)
+    except Exception:
+        return JsonResponse({"success": False, "error": "No se pudo leer el archivo Excel. Asegúrate de que el archivo no esté dañado."}, status=400)
+
+    # Normalizar nombres de columnas
+    columns = [str(col).strip() for col in df.columns]
+    col_catalogo = None
+    col_codigo = None
+    for col in columns:
+        if col in ['catalogo', 'catálogo', 'Catalogo', 'Catálogo']:
+            col_catalogo = col
+        if col in ['codigo', 'código', 'Codigo', 'Código']:
+            col_codigo = col
+
+    if not col_catalogo or not col_codigo:
+        return JsonResponse({
+            "success": False,
+            "error": "El archivo debe contener las columnas 'Catalogo' o 'Catálogo' y 'Codigo' o 'Código'."
+        }, status=400)
+    
+    # Solo dejar las columnas de catalogo y codigo
+    df = df[[col_catalogo, col_codigo]]
+    df = df.drop_duplicates()
+    df = df.dropna()
+    df = df.reset_index(drop=True)
+
+    #renombrar columnas a code y catalog
+    df = df.rename(columns={col_catalogo: 'catalog', col_codigo: 'code'})
+
+    
+
+    # Guardar archivo en apps/static/data/file.xlsx
+    static_data_dir = os.path.join('.', 'apps', 'static', 'data')
+    os.makedirs(static_data_dir, exist_ok=True)
+    save_path = os.path.join(static_data_dir, f'{enterprise}_catalog.xlsx')
+    try:
+        df.to_excel(save_path, index=False)
+    except Exception:
+        return JsonResponse({"success": False, "error": "No se pudo guardar el archivo en el servidor."}, status=500)
+
+    return JsonResponse({"success": True, "message": "Archivo cargado y validado correctamente. Los cambios serán visibles a partir de mañana."})

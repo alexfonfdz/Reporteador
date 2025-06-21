@@ -1,4 +1,4 @@
-from apps.home.queries.mysql import UPDATE_PRODUCT_CATALOG, UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE, UPSERT_ANALYSIS_ABC
+from apps.home.queries.mysql import UPDATE_PRODUCT_CATALOG, UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE, UPSERT_ANALYSIS_ABC, DELETE_ANALISIS_ABC, DELETE_PRODUCT_ABC, SET_NULL_CATALOG_ON_PRODUCT, DELETE_CATALOG
 from datetime import timedelta
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
 from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
@@ -562,7 +562,7 @@ async def upsert_movement_details(pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool,
    
 
 
-async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: str, product_code_column: str):
+async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: str, product_code_column: str, update_all: bool,  pg_pool: asyncpg.Pool, my_pool: aiomysql.Pool):
     """Fetch families, subfamilies and brands for the schema of a given enterprise in admintotal's postgres and
     inserts them in their respective tables in the application's database
     """
@@ -571,26 +571,6 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
     if not connection_data:
         return None
 
-    pg_pool = await asyncpg.create_pool(
-        user=connection_data.user,
-        host=connection_data.host,
-        port=connection_data.port,
-        database=connection_data.name,
-        password=connection_data.password,
-        min_size=3,
-        max_size=5,
-        max_inactive_connection_lifetime=300
-    )
-
-    my_pool = await aiomysql.create_pool(
-        user=ENV_MYSQL_USER,
-        host=ENV_MYSQL_HOST,
-        port=int(ENV_MYSQL_PORT or 3306),
-        password=ENV_MYSQL_PASSWORD,
-        db=ENV_MYSQL_NAME,
-        minsize=3,
-        maxsize=5
-    )
 
     todos = [upsert_families, upsert_subfamilies, upsert_brands]
     tasks = []
@@ -611,7 +591,7 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
         pg_pool=pg_pool,
         my_pool=my_pool,
         schema=connection_data.schema,
-        update_all=False
+        update_all=update_all
     )
 
     affected_product_catalog = await upsert_product_catalog(
@@ -626,14 +606,14 @@ async def refresh_data(enterprise: str, catalog_path: str, catalog_name_column: 
         pg_pool=pg_pool,
         my_pool=my_pool,
         schema=connection_data.schema,
-        update_all=False
+        update_all=update_all
     )
 
     affected_movement_details = await upsert_movement_details(
         pg_pool=pg_pool,
         my_pool=my_pool,
         schema=connection_data.schema,
-        update_all=False
+        update_all=update_all
     )
 
     for task in tasks:
@@ -1394,6 +1374,44 @@ async def calculate_analysis_abc_todo(my_pool):
     # Upsert en la tabla analysis_abc
     if analysis_abc_records:
         await upsert_analysis_abc(my_pool, analysis_abc_records)
+
+async def delete_productos_abc(my_pool: aiomysql.Pool):
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for _, connection_data in enterprises.items():
+                query = DELETE_PRODUCT_ABC(connection_data.schema)
+                await cursor.execute(query)
+                await conn.commit()
+            
+            query = DELETE_PRODUCT_ABC("TODO")
+            await cursor.execute(query)
+            await conn.commit()
+
+   
+
+async def delete_analisis_abc(my_pool: aiomysql.Pool):
+    async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for _, connection_data in enterprises.items():
+                query = DELETE_ANALISIS_ABC(connection_data.schema)
+                await cursor.execute(query)
+                await conn.commit()
+
+            query = DELETE_ANALISIS_ABC("TODO")
+            await cursor.execute(query)
+            await conn.commit()
+
+async def delete_catalog(my_pool: aiomysql.Pool):
+     async with my_pool.acquire() as conn:
+        async with conn.cursor() as cursor:
+            for _, connection_data in enterprises.items():
+                set_null_catalog_query = SET_NULL_CATALOG_ON_PRODUCT(connection_data.schema)
+                await cursor.execute(set_null_catalog_query)
+                delete_catalog_query = DELETE_CATALOG()
+                await cursor.execute(delete_catalog_query)
+
+                await conn.commit()
+
 
 ### Enterprises funciona para ir agregando mas empresas y sus respectivos datos de conexion a la base de datos, tomarlo en cuenta al traer los datos
 ### Existe la variable ENV_UPDATE_ALL_DATES que si es True no se toma en cuenta el ultimo año o mes o fecha de actualización y se actualizan todos los registros
