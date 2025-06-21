@@ -9,6 +9,7 @@ from unipath import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+# Load environment variables from .env file
 ENV_SECRET_KEY = os.getenv('SECRET_KEY')
 ENV_DEBUG = os.getenv('DEBUG')
 ENV_SERVER = os.getenv('SERVER')
@@ -22,6 +23,8 @@ ENV_PSQL_USER = os.getenv('PSQL_USER')
 ENV_PSQL_PASSWORD = os.getenv('PSQL_PASSWORD')
 ENV_PSQL_HOST = os.getenv('PSQL_HOST')
 ENV_PSQL_PORT = os.getenv('PSQL_PORT')
+ENV_PSQL_DB_SCHEMA = os.getenv('PSQL_DB_SCHEMA')
+ENV_UPDATE_ALL_DATES = os.getenv('UPDATE_ALL_DATES', 'False')
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = Path(__file__).parent
@@ -81,7 +84,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
-
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Database
 # https://docs.djangoproject.com/en/3.0/ref/settings/#databases
 

@@ -13,3 +13,7 @@ whitenoise==5.3.0
 mysqlclient
 psycopg2-binary
 python-dotenv
+mysql-connector-python
+aiomysql
+asyncpg
+pandas

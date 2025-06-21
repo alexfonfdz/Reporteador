@@ -1,0 +1,45 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Catálogo {% endblock %} 
+
+{% block stylesheets %}
+{% endblock stylesheets %}
+
+{% block content %}
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header card-header-primary">
+                    <h4 class="card-title ">Catálogo de productos</h4>
+                    <p class="card-category"></p>
+                </div>
+                <div class="card-body">
+                    <form id="load-excel-form">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <label for="excel-file" class="form-label">Archivo Excel</label>
+                                <input type="file" name="excel-file" id="excel-file" class="form-control"/>
+                            </div>
+                            <div class="col-md-3">
+                                <label for="enterprise" class="form-label">Empresa</label>
+                                <select  name="enterprise" id="enterprise" class="form-control">
+                                </select>
+                            </div>  
+
+                        <button class="btn btn-primary">Importar Excel</button>
+                    </form>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+{% endblock content %}
+
+{% block javascripts %}
+<script type="module" src="static/assets/html-js/catalogo/loadCatalogo.js"></script>
+{% endblock javascripts %}
+
+

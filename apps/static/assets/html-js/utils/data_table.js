@@ -9,6 +9,7 @@ export class DataTable {
         }
         this.pagination = {
             page: page ? page : 1,
+            num_pages: 1,
             has_next: true,
             has_prev: false
         }
@@ -16,6 +17,7 @@ export class DataTable {
     }
 
     getCurrentPage() { return this.pagination.page }
+    getNumPages() { return this.pagination.num_pages }
 
     setOnPageChange(fun) {
         if (typeof fun != 'function') { return }
@@ -52,10 +54,12 @@ export class DataTable {
     }
 
     async initialize() {
-        const { data, has_next, has_previous } = await this.service({ page: this.pagination.page, filters: this.searchState.filters })
+        const { data, pagination } = await this.service({ page: this.pagination.page, filters: this.searchState.filters })
 
-        this.pagination.has_next = has_next
-        this.pagination.has_prev = has_previous
+        this.pagination.has_next = pagination.num_pages > pagination.page
+        this.pagination.has_prev = pagination.page > 1
+        this.pagination.num_pages = pagination.num_pages
+
         this.tbody.innerHTML = ''
         this.loadData(data)
         this.updateURLState()
@@ -72,6 +76,9 @@ export class DataTable {
         if (!this.thead) {
             console.warn("No thead registered in datatable")
         }
+
+        this.thead.innerHTML = ''
+
         this.columns.forEach(tableColumn => {
             let th
 
