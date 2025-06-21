@@ -43,8 +43,6 @@ function showLoader() {
         loader.style.justifyContent = 'center';
         loader.style.zIndex = '1000';
         loader.innerHTML = `<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>`;
-        tableBody.parentElement.parentElement.style.position = 'relative';
-        tableBody.parentElement.appendChild(loader);
     }
     loader.style.display = 'flex';
 }
