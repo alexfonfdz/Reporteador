@@ -165,8 +165,7 @@ WHERE p.enterprise = '{enterprise}'
   AND YEAR(p.create_date) <= {year}
 GROUP BY p.id, p.code, p.description, p.create_date
 ORDER BY
-    total_amount DESC,
-    CASE WHEN total_amount IS NULL THEN p.description ELSE NULL END ASC
+     5 DESC, p.description ASC
 ;
 """
     )
@@ -240,8 +239,7 @@ LEFT JOIN movements_detail md
 WHERE YEAR(p.create_date) <= {year}
 GROUP BY p.id, p.code, p.description, p.create_date
 ORDER BY
-    total_amount DESC,
-    CASE WHEN total_amount IS NULL THEN p.description ELSE NULL END ASC
+     5 DESC, p.description ASC
 ;
 """
     )
