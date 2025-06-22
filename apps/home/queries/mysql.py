@@ -133,7 +133,8 @@ def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR(enterprise: str):
 SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
 SUM(amount-(cost_of_sale * quantity)) AS total_profit
 FROM movements_detail
-WHERE enterprise = '{enterprise}' 
+INNER JOIN movements m ON movements_detail.movement_id = m.id
+WHERE enterprise = '{enterprise}' AND m.movement_type = 2 AND m.canceled = false
 GROUP BY YEAR(movement_detail_date)
 ORDER BY YEAR(movement_detail_date) DESC;
 """
@@ -210,6 +211,8 @@ def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL():
 SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
 SUM(amount-(cost_of_sale * quantity)) AS total_profit
 FROM movements_detail
+INNER JOIN movements m ON movements_detail.movement_id = m.id
+WHERE m.movement_type = 2 AND m.canceled = false
 GROUP BY YEAR(movement_detail_date)
 ORDER BY YEAR(movement_detail_date) DESC;
 """
