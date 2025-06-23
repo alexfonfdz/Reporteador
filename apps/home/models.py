@@ -76,7 +76,7 @@ class Product(models.Model):
     brand = models.ForeignKey(Brand, on_delete=models.PROTECT, related_name='products', null=True, blank=True)
     catalog = models.ForeignKey(Catalog, on_delete=models.PROTECT, related_name='products', null=True, blank=True)
     id_admin = models.IntegerField()
-    code = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=100)
     description = models.TextField()
     create_date = models.DateTimeField()
     enterprise = models.CharField(max_length=100, unique=False, blank=False, default="none")
@@ -90,7 +90,11 @@ class Product(models.Model):
         verbose_name = "Product"
         verbose_name_plural = "Products"
         constraints=[
-            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_product_unique_idx")
+            models.UniqueConstraint(fields=["id_admin", "enterprise"], name="enterprise_id_admin_product_unique_idx"),
+            models.UniqueConstraint(fields=["code", "enterprise"], name="code_enterprise_unique_idx")
+        ]
+        indexes=[
+            models.Index(fields=['code'], name="code__idx")
         ]
 
 

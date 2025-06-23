@@ -8,11 +8,13 @@ import asyncpg
 
 catalog_column_name = 'catalog'
 product_code_column_name = 'code'
+catalog_file_name = 'catalog.xlsx'
+
 
 async def main():
   my_pool = await aiomysql.create_pool(
       user=ENV_MYSQL_USER,
-      host=ENV_MYSQL_HOST,
+      host=ENV_MYSQL_HOST or 'localhost',
       port=int(ENV_MYSQL_PORT or 3306),
       password=ENV_MYSQL_PASSWORD,
       db=ENV_MYSQL_NAME,
@@ -38,7 +40,6 @@ async def main():
         max_size=5,
         max_inactive_connection_lifetime=300
     )
-    catalog_file_name = f'{enterprise.schema}_catalog.xlsx'
     catalog_file_path = os.path.join('.', 'apps', 'static', 'data', catalog_file_name)
 
 

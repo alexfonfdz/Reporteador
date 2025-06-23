@@ -33,6 +33,7 @@ urlpatterns = [
     path('getMinMovementsDate', views.get_min_movements_date, name='getMinMovementsDate'),
     path('getProductCatalog', views.get_product_catalog, name='getProductCatalog'),
     path('uploadCatalogFile', views.upload_catalog_file, name='uploadCatalogFile'),
+    
 
     # Matches any html file
     re_path(r'^.*\.*', views.pages, name='pages'),

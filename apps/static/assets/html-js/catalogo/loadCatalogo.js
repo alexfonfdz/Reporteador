@@ -1,31 +1,5 @@
 import '/static/assets/html-js/catalogo/loadExcel.js'
 
-
-const enterprisesSelectForm = document.getElementById('enterprise')
-
-
-function getEnterprises() {
-    return fetch('/getEnterprises')
-        .then((response) => {
-            if (!response.ok) {
-                throw new Exception('The response went wrong')
-            }
-            return response.json()
-        })
-        .catch(err => {
-            console.log(err)
-        })
-}
-
-
-getEnterprises().then(enterprises => {
-    if (!enterprises) {
-        return
-    }
-    enterprises.forEach(enterprise => {
-        enterprisesSelectForm.appendChild(new Option(enterprise, enterprise))
-    })
-})
 // Agrega el loader HTML al DOM
 function showLoader() {
     let loader = document.getElementById('abc-loader');
@@ -74,7 +48,6 @@ excelForm.addEventListener('submit', async (e) => {
     }
     const formData = new FormData(e.target)
     formData.append('file', file)
-    formData.append('enterprise', enterprisesSelectForm.value)
     showLoader()
     try {
         const res = await fetch('/uploadCatalogFile', {

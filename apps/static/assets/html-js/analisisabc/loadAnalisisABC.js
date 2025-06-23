@@ -1,5 +1,102 @@
 import { DataTable } from "../utils/data_table.js"
 
+const getProducts = async (e) => {
+    const catalogName = e.target.getAttribute('data-catalog')
+    const enterprise = e.target.getAttribute('data-enterprise')
+
+    // Mostrar loader en el modal
+    showProductModal('Cargando...', true)
+
+    try {
+        const url = new URL('/getProductCatalog', window.location.origin)
+        url.searchParams.set('catalog', catalogName)
+        url.searchParams.set('enterprise', enterprise)
+        url.searchParams.set('per_page', '1000') // traer todos
+
+        const res = await fetch(url)
+        const data = await res.json()
+
+        if (!data || !data.data || !Array.isArray(data.data)) {
+            showProductModal('No se encontraron productos.', false)
+            return
+        }
+
+        // Construir tabla HTML
+        let html = `<div class="table-responsive"><table class="table table-bordered table-sm"><thead><tr>
+            <th>Código</th>
+            <th>Descripción</th>
+            <th>Familia</th>
+            <th>Subfamilia</th>
+            <th>Marca</th>
+            <th>Catálogo</th>
+            <th>Empresa</th>
+        </tr></thead><tbody>`
+
+        if (data.data.length === 0) {
+            html += `<tr><td colspan="7" class="text-center">No hay productos para este catálogo.</td></tr>`
+        } else {
+            data.data.forEach(prod => {
+                html += `<tr>
+                    <td>${prod.code || ''}</td>
+                    <td>${prod.description || ''}</td>
+                    <td>${prod['family__name'] || ''}</td>
+                    <td>${prod['subfamily__name'] || ''}</td>
+                    <td>${prod['brand__name'] || ''}</td>
+                    <td>${prod['catalog__name'] || ''}</td>
+                    <td>${prod.enterprise || ''}</td>
+                </tr>`
+            })
+        }
+        html += '</tbody></table></div>'
+        showProductModal(html, false)
+    } catch (err) {
+        showProductModal('Error al obtener productos.', false)
+    }
+}
+
+// Modal helpers
+function ensureProductModal() {
+    let modal = document.getElementById('product-modal')
+    if (!modal) {
+        modal = document.createElement('div')
+        modal.id = 'product-modal'
+        modal.innerHTML = `
+        <div class="modal fade" tabindex="-1" id="product-modal-inner" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="modal-title">Productos del catálogo</h5>
+                <button type="button" class="btn-close" data-dismiss="modal" aria-label="Cerrar">x</button>
+              </div>
+              <div class="modal-body" id="product-modal-body">
+              </div>
+            </div>
+          </div>
+        </div>
+        `
+        document.body.appendChild(modal)
+    }
+    return modal
+}
+
+function showProductModal(content, isLoading) {
+    ensureProductModal()
+    const modalBody = document.getElementById('product-modal-body')
+    if (modalBody) {
+        modalBody.innerHTML = isLoading ? '<div class="text-center my-4"><div class="spinner-border text-primary"></div></div>' : content
+    }
+    // Mostrar el modal usando Bootstrap 5
+    let bsModal = window.bootstrap && window.bootstrap.Modal
+        ? window.bootstrap.Modal.getOrCreateInstance(document.getElementById('product-modal-inner'))
+        : null
+    if (!bsModal) {
+        // fallback para Bootstrap 4
+        $('#product-modal-inner').modal('show')
+    } else {
+        bsModal.show()
+    }
+}
+
 const percentageFormatter = ({ currentValue }) => {
     let stringValue
     if (typeof currentValue == "string") {
@@ -60,6 +157,24 @@ const topProductsFormatter = ({ currentValue, td }) => {
     return currentValue
 }
 
+// Preprocesador para colorear celdas según porcentaje (mejor manejo de negativos)
+const percentageColorFormatter = ({ currentValue, td }) => {
+    if (typeof currentValue !== "number") {
+        const num = Number(currentValue)
+        if (!isNaN(num)) currentValue = num
+        else return currentValue
+    }
+    if (!td) return currentValue
+    if (currentValue < 0) {
+        td.style.backgroundColor = "#f8d7da" // rojo claro
+    } else if (currentValue >= 0 && currentValue <= 10) {
+        td.style.backgroundColor = "#fff3cd" // amarillo claro
+    } else if (currentValue > 10) {
+        td.style.backgroundColor = "#d4edda" // verde claro
+    }
+    return currentValue
+}
+
 const tableColumns = [
     {
         column: "#",
@@ -76,6 +191,12 @@ const tableColumns = [
     {
         column: "Subfamilia",
         accessorKey: "subfamily_name"
+    },
+    {
+        column: "Productos",
+        accessorFn: ({ row }) => {        
+            return `<button class="btn btn-primary fetchProducts" data-catalog="${row.catalog_name}" data-enterprise="${row.enterprise}">Ver Productos</button>`
+        }
     },
     {
         column: "Empresa",
@@ -97,12 +218,12 @@ const tableColumns = [
     {
         column: "Utilidad",
         accessorKey: "profit",
-        preprocess: [currencyFormatter]
+        preprocess: [percentageColorFormatter, currencyFormatter]
     },
     {
         column: "% Utilidad",
         accessorKey: "profit_percentage",
-        preprocess: [percentageFormatter]
+        preprocess: [percentageColorFormatter, percentageFormatter]
     },
     {
         column: "Inventario cierre (u)",
@@ -116,7 +237,7 @@ const tableColumns = [
     {
         column: "ROI mensual",
         accessorKey: "monthly_roi",
-        preprocess: [percentageFormatter]
+        preprocess: [percentageColorFormatter, percentageFormatter]
     },
     {
         column: "Promedio ventas mes",
@@ -169,7 +290,7 @@ const tableColumns = [
     {
         column: "% Acum. Utilidad",
         accessorKey: "acc_profit_percentage",
-        preprocess: [percentageFormatter]
+        preprocess: [percentageColorFormatter, percentageFormatter]
     },
     {
         column: "ABC Utilidad",
@@ -500,6 +621,11 @@ table.setOnPageChange((pagination) => {
         document.getElementById('last-page').parentElement.classList.remove('disabled')
     }
     document.getElementById('results').innerHTML = `MOSTRANDO  <span class="text-body-primary">${pagination.page}</span> DE ${pagination.num_pages} PAGINAS`
+    const fetchProductsButtons = document.querySelectorAll('.fetchProducts')
+    
+    fetchProductsButtons.forEach(button => {
+        button.addEventListener('click', getProducts)
+    })
 })
 
 table.loadHeaders()
@@ -745,3 +871,4 @@ const handleSubmit = async () => {
 
 filtersForm.addEventListener('submit', (e) => {e.preventDefault(); handleSubmit()})
 handleSubmit()
+

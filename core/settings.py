@@ -18,13 +18,25 @@ ENV_MYSQL_USER = os.getenv('MYSQL_USER')
 ENV_MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD')
 ENV_MYSQL_HOST = os.getenv('MYSQL_HOST')
 ENV_MYSQL_PORT = os.getenv('MYSQL_PORT')
+
 ENV_PSQL_NAME = os.getenv('PSQL_NAME')
 ENV_PSQL_USER = os.getenv('PSQL_USER')
 ENV_PSQL_PASSWORD = os.getenv('PSQL_PASSWORD')
 ENV_PSQL_HOST = os.getenv('PSQL_HOST')
 ENV_PSQL_PORT = os.getenv('PSQL_PORT')
 ENV_PSQL_DB_SCHEMA = os.getenv('PSQL_DB_SCHEMA')
+
+ENV_PSQL_NAME_2 = os.getenv('PSQL_NAME_2')
+ENV_PSQL_USER_2 = os.getenv('PSQL_USER_2')
+ENV_PSQL_PASSWORD_2 = os.getenv('PSQL_PASSWORD_2')
+ENV_PSQL_HOST_2 = os.getenv('PSQL_HOST_2')
+ENV_PSQL_PORT_2 = os.getenv('PSQL_PORT_2')
+ENV_PSQL_DB_SCHEMA_2 = os.getenv('PSQL_DB_SCHEMA_2')
+
 ENV_UPDATE_ALL_DATES = os.getenv('UPDATE_ALL_DATES', 'False')
+ENV_UPDATE_ALL_DATES = ENV_UPDATE_ALL_DATES.lower() == 'true'
+
+
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = Path(__file__).parent

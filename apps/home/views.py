@@ -530,6 +530,9 @@ def get_analysis_abc(request):
     enterprise_data = enterprises.get(enterprise_key)
     schema = enterprise_data.schema if enterprise_data else ''
 
+    if enterprise_key == 'TODO':
+        schema = 'TODO'
+
     # select_related solo con campos válidos
     qs = AnalysisABC.objects.select_related(
         'family',
@@ -980,7 +983,7 @@ def get_product_catalog(request):
 
 
     qs = Product.objects.all()
-    if enterprise:
+    if enterprise and enterprise != 'TODO':
         qs = qs.filter(enterprise=enterprise)
 
     if family:
@@ -1001,18 +1004,21 @@ def get_product_catalog(request):
     qs = qs.order_by('code')
     qs = qs.select_related('family', 'subfamily', 'brand', 'catalog')
         
-    paginator = Paginator(qs.values('code', 'description', 'family__name', 'subfamily__name', 'brand__name', 'catalog__name'), per_page)
+    paginator = Paginator(qs.values('code', 'description', 'family__name', 'subfamily__name', 'brand__name', 'catalog__name', 'enterprise'), per_page)
     page_obj = paginator.get_page(page)
 
     pagination = {
         "num_pages": paginator.num_pages,
         "page": page_obj.number,
     }
-
-    return JsonResponse({
+    
+    response = {
         "data": list(page_obj),
         "pagination": pagination
-    })
+    }
+    
+
+    return JsonResponse(response)
 
 
 
@@ -1025,7 +1031,7 @@ def upload_catalog_file(request):
         return HttpResponseNotAllowed(['POST'])
 
     file = request.FILES.get('file')
-    enterprise = request.POST.get('enterprise')
+
 
     if not file:
         return JsonResponse({"success": False, "error": "No se recibió ningún archivo."}, status=400)
@@ -1035,16 +1041,6 @@ def upload_catalog_file(request):
     if not (filename.endswith('.xlsx') or filename.endswith('.xls')):
         return JsonResponse({"success": False, "error": "El archivo debe ser un Excel (.xlsx o .xls)."}, status=400)
 
-    # Validar la empresa
-    if not enterprise:
-        return JsonResponse({"success": False, "error": "No se proporcionó una empresa."}, status=400)
-    
-    enterprise_data = enterprises.get(enterprise)
-    if not enterprise_data:
-        return JsonResponse({"success": False, "error": "Empresa no válida."}, status=400)
-    
-    enterprise = enterprise_data.schema
-    
     # Leer archivo excel
     try:
         df = pd.read_excel(file)
@@ -1081,7 +1077,7 @@ def upload_catalog_file(request):
     # Guardar archivo en apps/static/data/file.xlsx
     static_data_dir = os.path.join('.', 'apps', 'static', 'data')
     os.makedirs(static_data_dir, exist_ok=True)
-    save_path = os.path.join(static_data_dir, f'{enterprise}_catalog.xlsx')
+    save_path = os.path.join(static_data_dir, 'catalog.xlsx')
     try:
         df.to_excel(save_path, index=False)
     except Exception:
