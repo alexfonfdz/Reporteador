@@ -247,7 +247,7 @@ class Movements(models.Model):
 
 class MovementsDetail(models.Model):
     id_admin = models.IntegerField()
-    movement = models.ForeignKey(Movements, on_delete=models.PROTECT, related_name='details')
+    movement = models.ForeignKey(Movements, on_delete=models.PROTECT, related_name='details', null=True, blank=True)
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='movement_details', null=True, blank=True)
     movement_detail_date = models.DateTimeField()
     um = models.CharField(max_length=100, unique=False, blank=True, null=True)
