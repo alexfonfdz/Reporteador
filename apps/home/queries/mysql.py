@@ -52,8 +52,11 @@ ON DUPLICATE KEY UPDATE
 def UPDATE_PRODUCT_CATALOG(enterprise: str):
     return (
 f"""
-UPDATE IGNORE product SET catalog_id = (SELECT id FROM catalog WHERE name = %s LIMIT 1)
-WHERE enterprise = '{enterprise}' AND code IN %s;
+UPDATE IGNORE product
+    JOIN catalog ON catalog.name = %s
+    SET product.catalog_id = catalog.id
+    WHERE product.enterprise = '{enterprise}'
+    AND product.code IN %s;
 """
 )
 
@@ -130,11 +133,11 @@ WHERE enterprise = '{enterprise}';
 def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR(enterprise: str):
     return (
     f"""
-SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
-SUM(amount-(cost_of_sale * quantity)) AS total_profit
-FROM movements_detail
-INNER JOIN movements m ON movements_detail.movement_id = m.id
-WHERE enterprise = '{enterprise}' AND m.movement_type = 2 AND m.canceled = false
+SELECT YEAR(movement_detail_date) AS year, SUM(md.amount) AS total_amount,
+SUM(md.amount-(md.cost_of_sale * md.quantity)) AS total_profit
+FROM movements_detail md
+INNER JOIN movements m ON md.movement_id = m.id
+WHERE md.enterprise = '{enterprise}' AND m.movement_type = 2 AND m.canceled = false
 GROUP BY YEAR(movement_detail_date)
 ORDER BY YEAR(movement_detail_date) DESC;
 """
@@ -208,10 +211,10 @@ FROM movements;
 def GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL():
     return (
     f"""
-SELECT YEAR(movement_detail_date) AS year, SUM(amount) AS total_amount,
-SUM(amount-(cost_of_sale * quantity)) AS total_profit
-FROM movements_detail
-INNER JOIN movements m ON movements_detail.movement_id = m.id
+SELECT YEAR(movement_detail_date) AS year, SUM(md.amount) AS total_amount,
+SUM(md.amount-(md.cost_of_sale * md.quantity)) AS total_profit
+FROM movements_detail md
+INNER JOIN movements m ON md.movement_id = m.id
 WHERE m.movement_type = 2 AND m.canceled = false
 GROUP BY YEAR(movement_detail_date)
 ORDER BY YEAR(movement_detail_date) DESC;

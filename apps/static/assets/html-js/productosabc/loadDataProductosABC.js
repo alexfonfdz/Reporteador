@@ -98,9 +98,26 @@ const topProductsFormatter = ({ currentValue, td }) => {
     return currentValue
 }
 
+// Preprocesador para colorear celdas según porcentaje (mejor manejo de negativos)
+const percentageColorFormatter = ({ currentValue, td }) => {
+    if (typeof currentValue !== "number") {
+        const num = Number(currentValue)
+        if (!isNaN(num)) currentValue = num
+        else return currentValue
+    }
+    if (!td) return currentValue
+    if (currentValue < 0) {
+        td.style.backgroundColor = "#f8d7da" // rojo claro
+    } else if (currentValue >= 0 && currentValue <= 10) {
+        td.style.backgroundColor = "#fff3cd" // amarillo claro
+    } else if (currentValue > 10) {
+        td.style.backgroundColor = "#d4edda" // verde claro
+    }
+    return currentValue
+}
+
 function getDynamicColumns(years){
     const allStats = []
-
 
     for (const year of years){
 
@@ -125,6 +142,7 @@ function getDynamicColumns(years){
             accessorFn: ({row}) => {
                 return row['stats'][year]['sold_abc']
             },
+            preprocess: [abcFormatter]
         })
 
         allStats.push({
@@ -132,7 +150,7 @@ function getDynamicColumns(years){
             accessorFn: ({row}) => {
                 return row['stats'][year]['profit_percentage']
             },
-            preprocess: [percentageFormatter]
+            preprocess: [percentageColorFormatter, percentageFormatter]
         })
 
         allStats.push({
@@ -140,7 +158,7 @@ function getDynamicColumns(years){
             accessorFn: ({row}) => {
                 return row['stats'][year]['acc_profit_percentage']
             },
-            preprocess: [percentageFormatter]
+            preprocess: [percentageColorFormatter, percentageFormatter]
         })
 
         allStats.push({

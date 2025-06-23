@@ -1,7 +1,7 @@
 from apps.home.queries.mysql import UPDATE_PRODUCT_CATALOG, UPSERT_CATALOGS, UPSERT_FAMILIES, UPSERT_MOVEMENT_DETAILS, UPSERT_MOVEMENTS, UPSERT_PRODUCTS, UPSERT_SUBFAMILIES, UPSERT_BRANDS,GET_DISTINCT_YEARS_MOVEMENTS, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR, UPSERT_PRODUCT_ABC, GET_DISTINCT_YEARS_MOVEMENTS_ALL, GET_TOTAL_AMOUNT_AND_TOTAL_PROFIT_BY_YEAR_ALL, GET_PRODUCTS_SALES_SUMMARY_BY_YEAR_ALL, GET_MOST_RECENT_UPDATE_UTC, INSERT_TABLE_UPDATE, UPSERT_ANALYSIS_ABC, DELETE_ANALISIS_ABC, DELETE_PRODUCT_ABC, SET_NULL_CATALOG_ON_PRODUCT, DELETE_CATALOG
 from datetime import timedelta
 from apps.home.queries.postgres import SELECT_BRANDS, SELECT_FAMILIES, SELECT_MOVEMENT_DETAILS, SELECT_MOVEMENTS, SELECT_PRODUCTS, SELECT_SUBFAMILIES
-from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_MYSQL_HOST, ENV_MYSQL_PORT, ENV_MYSQL_NAME, ENV_MYSQL_USER, ENV_MYSQL_PASSWORD, ENV_UPDATE_ALL_DATES
+from core.settings import ENV_PSQL_NAME, ENV_PSQL_USER, ENV_PSQL_PASSWORD, ENV_PSQL_HOST, ENV_PSQL_PORT, ENV_PSQL_DB_SCHEMA, ENV_PSQL_NAME_2, ENV_PSQL_USER_2, ENV_PSQL_PASSWORD_2, ENV_PSQL_HOST_2, ENV_PSQL_PORT_2, ENV_PSQL_DB_SCHEMA_2, ENV_UPDATE_ALL_DATES
 import asyncpg
 import aiomysql
 from dataclasses import dataclass
@@ -22,13 +22,21 @@ class EnterpriseConnectionData:
 
 
 enterprises = {
-    "MR DIESEL" : EnterpriseConnectionData(
+    "MARW" : EnterpriseConnectionData(
         schema=str(ENV_PSQL_DB_SCHEMA),
         port=int(ENV_PSQL_PORT or 5432),
         user=str(ENV_PSQL_USER),
         password=str(ENV_PSQL_PASSWORD),
         host=str(ENV_PSQL_HOST),
         name=str(ENV_PSQL_NAME)
+    ),
+    "MR DIESEL" : EnterpriseConnectionData(
+        schema=str(ENV_PSQL_DB_SCHEMA_2),
+        port=int(ENV_PSQL_PORT_2 or 5432),
+        user=str(ENV_PSQL_USER_2),
+        password=str(ENV_PSQL_PASSWORD_2),
+        host=str(ENV_PSQL_HOST_2),
+        name=str(ENV_PSQL_NAME_2)
     )
 }
 
@@ -853,7 +861,7 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
     async with my_pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cursor:
             # 1. Traer todos los años de movimientos
-            await cursor.execute("SELECT DISTINCT YEAR(movement_detail_date) AS year FROM movements_detail")
+            await cursor.execute("SELECT DISTINCT YEAR(movement_detail_date) AS year FROM movements_detail WHERE enterprise=%s", (schema, ))
             years = [row['year'] for row in await cursor.fetchall() if row['year'] is not None]
 
             # 2. Si no se actualiza todo, obtener last_update por agrupación
@@ -1110,8 +1118,8 @@ async def calculate_analysis_abc(my_pool, enterprise_or_schema: str):
         await upsert_analysis_abc(my_pool, analysis_abc_records)
 
     # Si la empresa no es TODO, ejecuta también para TODO
-    if schema != "TODO":
-        await calculate_analysis_abc(my_pool, "TODO")
+    # if schema != "TODO":
+    #     await calculate_analysis_abc(my_pool, "TODO")
 
 
 async def upsert_analysis_abc(my_pool, analysis_abc_records):

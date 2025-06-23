@@ -52,13 +52,35 @@ class TestInsertingLogic(TestCase):
         asyncio.run(
             job()
         )
+    
+    def test_c_upsert_product_catalog(self):
+        catalog_path = os.path.join('apps', 'static', 'data', 'marw_catalog.xlsx')
+        catalog_column_name = 'catalog'
+        product_code_column = 'code'
+        enterprise = enterprises.get('MR DIESEL')
+        
+        async def job():
+            my_pool = await aiomysql.create_pool(
+                user=ENV_MYSQL_USER,
+                host=ENV_MYSQL_HOST,
+                port=int(ENV_MYSQL_PORT or 3306),
+                password=ENV_MYSQL_PASSWORD,
+                db=ENV_MYSQL_NAME,
+                minsize=3,
+                maxsize=5
+            )
+            await upsert_product_catalog(my_pool, enterprise.schema, catalog_path, catalog_column_name, product_code_column)
+
+        asyncio.run(
+            job()
+        )
        
 
     def test_a_refresh_data(self):
         catalog_path = os.path.join('apps', 'static', 'data', 'Catalogo.para.agrupaciones.MARW-Archivo_limpio.xlsx')
         catalog_column_name = 'Catalogo'
         product_code_column = 'Codigo'
-        enterprise = enterprises.get('MR DIESEL')
+        enterprise = enterprises.get('MARW')
 
         async def job():
             my_pool = await aiomysql.create_pool(
@@ -80,8 +102,8 @@ class TestInsertingLogic(TestCase):
                 max_size=5,
                 max_inactive_connection_lifetime=300
             )
-            refresh_data(
-                enterprise="MR DIESEL",
+            await refresh_data(
+                enterprise="MARW",
                 catalog_path=catalog_path,
                 catalog_name_column=catalog_column_name,
                 product_code_column=product_code_column,
@@ -130,6 +152,10 @@ class TestCalculateAnalysisABC(TestCase):
             maxsize=5
             )
 
+            await calculate_analysis_abc(
+                my_pool=my_pool,
+                enterprise_or_schema="MARW"
+            )
             await calculate_analysis_abc(
                 my_pool=my_pool,
                 enterprise_or_schema="MR DIESEL"
