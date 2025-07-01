@@ -11,16 +11,6 @@ urlpatterns = [
     # The home page
     path('', views.index, name='home'),
 
-    # No modificar
-    path('getYears', views.get_years, name='getYears'),
-    path('getMonths', views.get_months, name='getMonths'),
-    path('getDays', views.get_days, name='getDays'),
-    path('getProducts', views.get_products, name='getProducts'),
-    path('getFolio', views.get_folio, name='getFolio'),
-    path('getClientesNuevos', views.get_clientes_nuevos, name='getClientesNuevos'),
-    path('getClientesAusentes', views.get_clientes_ausentes, name='getClientesAusentes'),
-    path('getAlmacenes', views.get_almacenes, name='getAlmacenes'),
-    path('getAlmacenData', views.get_almacen_data, name='getAlmacenData'),
     path('getDebugProductosABC', views.debug_productosabc, name='getDebugProductosABC'),
     path('getEnterprises', views.get_enterprises, name='getEnterprises'),
     path('getProductsABC', views.get_products_abc, name='getProductsABC'),
